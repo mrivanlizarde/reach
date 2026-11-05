@@ -26,7 +26,7 @@ Requires macOS 15 or later and Xcode's command line tools.
    bottom-right. From then on the space between those two points is the whole screen, so
    small movements reach every edge.
 
-**Clicking.** Two ways, both on by default.
+**Clicking.** Pinch is the click. Tap is there if you want it, off by default.
 
 - **Pinch** thumb and index together. Hold the pinch to drag.
 - **Tap the glass.** Allow the Microphone. Point first, so the pointer is on the target,

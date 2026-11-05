@@ -24,7 +24,7 @@ final class Settings: ObservableObject {
             "trackingEnabled": false,
             "cameraID": "",
             "pinchToClick": true,
-            "tapSoundToClick": true,
+            "tapSoundToClick": false,   // opt-in since 2026-11-05: the camera cannot see the hand at the glass
             "smoothing": 0.5,
             "tapSensitivity": 0.5,
             "showPreview": true,

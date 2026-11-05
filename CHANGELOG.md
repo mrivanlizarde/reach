@@ -1,5 +1,12 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, 14:40 — Pinch is the click
+
+Ivan's call after the fourth run: pinch is enough. Tap-to-click is now opt-in and off by
+default, with its description changed to the rule that actually works ("point first, then
+reach in and tap within five seconds"). The ask was a touchscreen; what shipped is a
+pointer you aim with a finger and click with a pinch, and that is the honest product.
+
 ## 2026-11-05, 14:35 — First clicks
 
 Fourth run. The Device Control grant went live at 14:30 while the app was running, no

@@ -143,7 +143,7 @@ struct PanelView: View {
             Toggle(isOn: $settings.tapSoundToClick) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Tap the glass")
-                    Text("The mics hear the tap, the camera knows where.").font(.caption).foregroundStyle(.secondary)
+                    Text("Point first, then reach in and tap within five seconds.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .onChange(of: settings.tapSoundToClick) { _, on in
