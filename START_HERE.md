@@ -51,8 +51,15 @@ fills in when a hand is tracked.
   Development) certificate in the keychain, falling back to ad-hoc only when none exists.
   Ad-hoc ties every privacy grant to one exact build: on 2026-11-05 the Device Control
   switch was on in System Settings and `AXIsProcessTrusted` still returned false. If a
-  grant ever stops being seen after a rebuild, `codesign -dv` the installed app and check
-  it is not ad-hoc; then `tccutil reset Accessibility com.ivanlizarde.reach` and re-add.
+  grant ever stops being seen after a rebuild, `codesign -d -r-` the installed app: the
+  designated requirement must end in `subject.OU = LD587PB2H8` (team-based). An Apple
+  Development signature pins the certificate's name instead, so a grant given to that
+  build dies the moment the app is signed with anything else. That is exactly what
+  happened on 2026-11-05: Reach was added to Device Control during a two-minute window
+  when it carried the Apple Development signature, and the Developer ID build that
+  followed read as untrusted with the switch on. Fix: `tccutil reset Accessibility
+  com.ivanlizarde.reach`, then add it again. Never change the signing identity after the
+  app has been granted anything.
 - **LSUIElement stays true.** The app is a menu bar extra by design. There is no window
   to show, so nothing is lost.
 - **Mouse events go through `CGEvent.post(tap: .cghidEventTap)`.** That needs the

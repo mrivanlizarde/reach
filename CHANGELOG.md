@@ -1,5 +1,18 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, 14:20 — Third run: the grant was bound to the wrong certificate
+
+Device Control listed Reach, switched on, and a fresh launch of the Developer ID build
+still read untrusted. The log names showed a launch at 13:49:04, inside the two minutes
+when the app carried the Apple Development signature. A grant given then is pinned to
+that certificate's name; the Developer ID build that followed at 13:50 no longer matched.
+`codesign -d -r-` confirms the installed build's requirement is now team-based, so this
+cannot recur once Reach is added one more time. Entry reset, no code change.
+
+The hand data from this run was the best yet: open hand at 0.83 to 0.98 with 0.9
+confidence (palm to the camera this time), pinches down to 0.04. Thresholds stand. The
+stillness gate parked the hand during the three-second hold, as designed.
+
 ## 2026-11-05, late — Real signature, and a parked hand stops driving the pointer
 
 Second run read. Device Control and Data Access showed Reach switched on and the app
