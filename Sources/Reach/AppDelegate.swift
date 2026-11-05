@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.statusItem.button?.image?.isTemplate = true
                 self?.statusItem.button?.appearsDisabled = false
             }
+
+        // Sensors start only now, with the icon on screen and the run loop live.
+        engine.activate()
     }
 
     @objc private func togglePopover() {

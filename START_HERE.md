@@ -62,6 +62,10 @@ fills in when a hand is tracked.
   overlay; the stored region is in mirrored coordinates. Mirror in a second place and
   calibration will invert.
 - **Two gates, keep both.** The pointer follows only a raised hand (index tip above wrist in frame), and no pinch or tap counts within 0.3 s of a keystroke. Without them, typing clicks.
+- **Nothing starts a sensor from inside an initializer.** `PointerEngine.activate()` runs
+  from `applicationDidFinishLaunching`, and every settings sink drops its first value.
+  Starting the microphone engine inside `init` hung the app at launch with no icon on
+  2026-11-05. If a relaunch shows no icon, `sample Reach 2` and look at the main thread.
 - **Tap detection is gated on a visible hand.** A knock on the desk or a dropped pen
   with no hand in view does nothing. Keep that gate.
 

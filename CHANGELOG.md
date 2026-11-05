@@ -1,5 +1,16 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, evening — Launch hang when tracking was saved on
+
+Found by sampling the process after a relaunch produced no log and no icon. With
+`trackingEnabled` persisted as true, the engine's Combine sinks fired inside its
+initializer and started the microphone listener on the main thread before the app had
+finished launching; `AVAudioEngine` blocked there and the status item never appeared.
+Every sink now drops its initial value, `activate()` runs from
+`applicationDidFinishLaunching`, and the microphone engine is only touched once the grant
+is already held. Verified by relaunching: the main thread sits in the run loop and the
+start note is written within a second.
+
 ## 2026-11-05, evening — Thresholds from the first real run
 
 Ivan ran the 60-second protocol. 862 hand frames at 30 fps, six taps, fifty audio onsets.

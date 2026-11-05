@@ -43,20 +43,47 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         taps.onTap = { [weak self] strength in
             Task { @MainActor in self?.handleTap(strength) }
         }
-        settings.$trackingEnabled.removeDuplicates().sink { [weak self] on in
+        // Every sink drops its first value. Starting sensors from inside init hung the app at
+        // launch on 2026-11-05: the microphone engine blocked the main thread before the
+        // menu bar icon existed. `activate()` starts things once the app is up.
+        settings.$trackingEnabled.dropFirst().removeDuplicates().sink { [weak self] on in
             on ? self?.start() : self?.stop()
         }.store(in: &cancellables)
         settings.$cameraID.dropFirst().removeDuplicates().sink { [weak self] id in
             guard let self, self.settings.trackingEnabled else { return }
             self.tracker.start(cameraID: id)
         }.store(in: &cancellables)
-        settings.$tapSoundToClick.removeDuplicates().sink { [weak self] on in
+        settings.$tapSoundToClick.dropFirst().removeDuplicates().sink { [weak self] on in
             guard let self, self.settings.trackingEnabled else { return }
-            on ? self.taps.start() : self.taps.stop()
+            on ? self.startTapsIfAllowed() : self.taps.stop()
         }.store(in: &cancellables)
         settings.$tapSensitivity.sink { [weak self] v in self?.taps.sensitivity = v }.store(in: &cancellables)
         settings.$smoothing.sink { [weak self] v in self?.applySmoothing(v) }.store(in: &cancellables)
         settings.$showPreview.sink { [weak self] v in self?.tracker.wantsPreview = v }.store(in: &cancellables)
+    }
+
+    /// Called once the app has finished launching. Never from init.
+    func activate() {
+        if settings.trackingEnabled { start() }
+    }
+
+    /// The microphone engine is only touched with the grant in hand. Asking for the grant
+    /// from inside the engine's own setup is what deadlocked the launch.
+    private func startTapsIfAllowed() {
+        switch Permissions.microphone {
+        case .authorized:
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.settings.trackingEnabled, self.settings.tapSoundToClick else { return }
+                self.taps.start()
+                if let e = self.taps.lastError { Diagnostics.shared.log("note", "mic: \(e)") }
+            }
+        case .notDetermined:
+            Permissions.requestMicrophone { [weak self] ok in
+                Task { @MainActor in if ok { self?.startTapsIfAllowed() } }
+            }
+        default:
+            Diagnostics.shared.log("note", "mic not granted; tap-to-click off")
+        }
     }
 
     /// 0 = raw and twitchy, 1 = heavy and calm. Both filter knobs move together.
@@ -82,7 +109,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
             Permissions.promptAccessibility()
         }
         tracker.start(cameraID: settings.cameraID)
-        if settings.tapSoundToClick { taps.start() }
+        if settings.tapSoundToClick { startTapsIfAllowed() }
         Diagnostics.shared.log("note", "start camera=\(settings.cameraID) tapSens=\(settings.tapSensitivity) smoothing=\(settings.smoothing) accessibility=\(Permissions.accessibility)")
         status = "Looking for a hand"
     }
