@@ -87,7 +87,7 @@ struct PanelView: View {
                 Text(engine.handVisible ? "\(Int(engine.fps)) fps" : " ").font(.caption).monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
             }
             if engine.handVisible {
-                // The numbers the thresholds see. Pinch fires below 0.28, releases above 0.40.
+                // The numbers the thresholds see. Pinch fires below 0.40, releases above 0.52.
                 HStack(spacing: 10) {
                     Text(String(format: "pinch %.2f", engine.pinchRatio))
                     Text(engine.handRaised ? "raised" : "resting")

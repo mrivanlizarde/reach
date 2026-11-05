@@ -1,5 +1,23 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, evening — Thresholds from the first real run
+
+Ivan ran the 60-second protocol. 862 hand frames at 30 fps, six taps, fifty audio onsets.
+
+- **Nothing clicked because Accessibility was never granted.** Every pinch and every
+  raised-hand tap was rejected at the same guard. The log now records the grant state at
+  start and the reason for every rejected tap, so this is never a mystery again.
+- **Pinch thresholds moved up to 0.40 / 0.52.** Pinched frames sat at 0.11 to 0.33; every
+  open or resting frame was 0.59 or higher. The old 0.28 sat on top of the pinch cluster
+  and would have missed half of them. Open hands read as high as 2.5 because the pointing
+  posture foreshortens the palm; the ratio still separates cleanly.
+- **The camera loses the hand at the glass.** The five screen taps arrived with no hand in
+  frame; the last raised sighting was twelve seconds earlier. A tap now counts if a raised
+  hand was seen within the last second, at the last known point. `handRaised` is also
+  reset when the hand is lost, which it was not.
+- **Tap sensitivity left alone.** Glass taps ran 6.2x to 43x, desk knocks 5.5x, typing 2x
+  to 3.5x. The default (6x) sits just above the knocks; the hand gate is the real filter.
+
 ## 2026-11-05, later — Measure before tuning
 
 Ivan said "tune it" before the app had ever been switched on, so there was no signal to

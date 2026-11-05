@@ -25,16 +25,23 @@ Then: `open ~/Library/Logs/Reach` and hand the newest csv over. Thresholds are s
 
 ## Next, in order
 
-1. **Set the thresholds from the protocol run.** Pinch 0.28/0.40 and tap onset 6x were set
-   from Apple's sample and first principles, not from this room.
-2. **Tap localisation.** The mic array has several capsules; a tap on the left of the
+1. **Second protocol run with Accessibility granted.** The first run (2026-11-05 13:27) set
+   the pinch thresholds (0.40 / 0.52) but no click could land because Accessibility was
+   off, so pinch-to-drag and tap-to-click have still never been felt.
+2. **Find the hand at the glass.** In the first run the pose model lost the hand before
+   the fingertip reached the screen; the five glass taps arrived with no hand in frame.
+   The one-second grace window covers it for now. Desk View may hold the hand longer
+   since it looks down at the approach; worth a run on that camera.
+3. **Knocks and taps sound alike.** Desk knocks hit 5.5x, soft glass taps 6.2x, hard ones
+   up to 43x. The microphone alone cannot separate them; the raised-hand gate is what does.
+7. **Tap localisation.** The mic array has several capsules; a tap on the left of the
    glass reaches them in a different order than one on the right. Cross-correlating
    channels could give a coarse x position and confirm the camera's estimate. Needs a
    multichannel input format, which `AVAudioEngine` exposes on this hardware.
-3. **Right-click and scroll.** A two-finger pinch for secondary click; an open palm moving
+4. **Right-click and scroll.** A two-finger pinch for secondary click; an open palm moving
    vertically for scroll.
-4. **Multi-display.** The engine maps to `NSScreen.main` only.
-5. **Hover intent.** Ignore the pointer when the hand is resting (very low velocity for
+5. **Multi-display.** The engine maps to `NSScreen.main` only.
+6. **Hover intent.** Ignore the pointer when the hand is resting (very low velocity for
    several seconds) so it does not drift across the screen while you read.
 
 ## Open questions

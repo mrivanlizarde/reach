@@ -29,6 +29,10 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     private var mouseIsDown = false
     private var lastPoint = CGPoint.zero
     private var lastSeen: Double = 0
+    /// When a raised hand was last in frame. The camera loses the hand in the last inches
+    /// before the glass (it is nearly edge-on to the lens by then), so a tap heard within a
+    /// second of the last raised sighting still counts, at the last known point.
+    private var lastRaisedSeen: Double = 0
     private var frameTimes: [Double] = []
     private var calibSamples: [CGPoint] = []
     private var calibTL: CGPoint?
@@ -79,7 +83,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         }
         tracker.start(cameraID: settings.cameraID)
         if settings.tapSoundToClick { taps.start() }
-        Diagnostics.shared.log("note", "start camera=\(settings.cameraID) tapSens=\(settings.tapSensitivity) smoothing=\(settings.smoothing)")
+        Diagnostics.shared.log("note", "start camera=\(settings.cameraID) tapSens=\(settings.tapSensitivity) smoothing=\(settings.smoothing) accessibility=\(Permissions.accessibility)")
         status = "Looking for a hand"
     }
 
@@ -149,7 +153,9 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         guard let hand else {
             if handVisible, CACurrentMediaTime() - lastSeen > 0.4 {
                 handVisible = false
+                handRaised = false
                 lastHand = nil
+                Diagnostics.shared.log("note", "hand lost")
                 releaseMouse()
                 if calibration == .idle { status = "Looking for a hand" }
             }
@@ -166,6 +172,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         }
         lastHand = hand
         handRaised = hand.raised
+        if hand.raised { lastRaisedSeen = lastSeen }
         pinchRatio = Double(hand.pinchRatio)
         Diagnostics.shared.log("hand", String(format: "%.3f", hand.pinchRatio), String(format: "%.2f", hand.confidence),
                                hand.raised ? 1 : 0, mouseIsDown ? 1 : 0)
@@ -203,7 +210,9 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         // Not within a third of a second of a keystroke: that hand is typing, not clicking.
         if settings.pinchToClick, secondsSinceKey() > 0.3 {
             let ratio = hand.pinchRatio
-            if ratio < 0.28 { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.4 { releaseFrames += 1; pinchFrames = 0 }
+            // From Ivan's run of 2026-11-05: pinched frames sat at 0.11 to 0.33, and no open or
+            // resting frame fell under 0.59. The old 0.28 sat on top of the pinch cluster.
+            if ratio < 0.40 { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.52 { releaseFrames += 1; pinchFrames = 0 }
             if !mouseIsDown, pinchFrames >= 3 { pressMouse() }
             if mouseIsDown, releaseFrames >= 3 { releaseMouse() }
         } else if mouseIsDown {
@@ -226,10 +235,15 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     private func handleTap(_ strength: Float) {
         lastTapOnset = strength
         let sinceKey = secondsSinceKey()
-        let accept = settings.tapSoundToClick && handVisible && handRaised && calibration == .idle
+        let recentlyRaised = CACurrentMediaTime() - lastRaisedSeen < 1.0
+        let accept = settings.tapSoundToClick && recentlyRaised && calibration == .idle
             && Permissions.accessibility && sinceKey > 0.3
-        Diagnostics.shared.log("tap", strength, String(format: "%.2f", sinceKey), handRaised ? 1 : 0, accept ? 1 : 0)
-        guard accept else { return }
+        Diagnostics.shared.log("tap", strength, String(format: "%.2f", sinceKey), recentlyRaised ? 1 : 0, accept ? 1 : 0)
+        if !accept {
+            let why = !Permissions.accessibility ? "no accessibility" : !recentlyRaised ? "no raised hand in last 1s" : sinceKey <= 0.3 ? "typing" : "off"
+            Diagnostics.shared.log("note", "tap rejected: \(why)")
+            return
+        }
         tapCount += 1
         if mouseIsDown { return }
         post(.leftMouseDown, at: lastPoint)
