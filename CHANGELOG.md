@@ -1,5 +1,20 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, 14:35 — First clicks
+
+Fourth run. The Device Control grant went live at 14:30 while the app was running, no
+relaunch needed, and the last minute of the log shows five pinch-clicks with drags: 188
+mouse-down frames, pinched at 0.01 to 0.07, open at 0.85 to 1.0. Pinch works as built.
+
+Glass taps did not land, for a reason the thresholds cannot fix: the front camera never
+sees the hand between pointing and touching the screen. Every tap came 3 to 20 seconds
+after the last raised sighting. The grace window is now five seconds and the rule is
+"point, then reach and tap", which the README says plainly. Desk View is the next test.
+
+The hand-lost timeout goes from 0.4 to 0.7 s: the model drops the hand for a frame or
+two at the edge of the frame (60 lost events in twelve minutes) and 0.4 s was enough to
+release a drag mid-way.
+
 ## 2026-11-05, 14:20 — Third run: the grant was bound to the wrong certificate
 
 Device Control listed Reach, switched on, and a fresh launch of the Developer ID build

@@ -29,9 +29,10 @@ Requires macOS 15 or later and Xcode's command line tools.
 **Clicking.** Two ways, both on by default.
 
 - **Pinch** thumb and index together. Hold the pinch to drag.
-- **Tap the glass.** Allow the Microphone. The mics hear the tap, the camera knows where
-  your finger is, and a click lands there. The sensitivity slider sets how hard a tap
-  has to be. Only fires while a hand is in view.
+- **Tap the glass.** Allow the Microphone. Point first, so the pointer is on the target,
+  then reach in and tap within a few seconds. The mics hear the tap and a click lands
+  where the pointer is. The camera does not see your hand once it is at the screen, so
+  the point has to come first. The sensitivity slider sets how hard a tap has to be.
 
 **Cameras.** The picker lists every camera, including Desk View on Macs that have it.
 Desk View looks down at the desk, which is useful if you would rather gesture above the

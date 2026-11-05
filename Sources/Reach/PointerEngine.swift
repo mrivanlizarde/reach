@@ -35,9 +35,10 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     private var mouseIsDown = false
     private var lastPoint = CGPoint.zero
     private var lastSeen: Double = 0
-    /// When a raised hand was last in frame. The camera loses the hand in the last inches
-    /// before the glass (it is nearly edge-on to the lens by then), so a tap heard within a
-    /// second of the last raised sighting still counts, at the last known point.
+    /// When a raised hand was last in frame. The camera does not see the hand on its way to
+    /// the glass at all: in Ivan's fourth run (2026-11-05 14:30) every glass tap arrived 3 to
+    /// 20 seconds after the last raised sighting. So the rule is "point, then reach and
+    /// tap": a tap heard within five seconds of a raised hand clicks at the last known point.
     private var lastRaisedSeen: Double = 0
     private var frameTimes: [Double] = []
     private var calibSamples: [CGPoint] = []
@@ -184,7 +185,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
 
     func tracker(_ tracker: HandTracker, didSee hand: HandSample?) {
         guard let hand else {
-            if handVisible, CACurrentMediaTime() - lastSeen > 0.4 {
+            if handVisible, CACurrentMediaTime() - lastSeen > 0.7 {
                 handVisible = false
                 handRaised = false
                 asleep = false; sleepAnchor = nil; recentTips = []
@@ -293,12 +294,12 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     private func handleTap(_ strength: Float) {
         lastTapOnset = strength
         let sinceKey = secondsSinceKey()
-        let recentlyRaised = CACurrentMediaTime() - lastRaisedSeen < 1.0
+        let recentlyRaised = CACurrentMediaTime() - lastRaisedSeen < 5.0
         let accept = settings.tapSoundToClick && recentlyRaised && !asleep && calibration == .idle
             && Permissions.accessibility && sinceKey > 0.3
         Diagnostics.shared.log("tap", strength, String(format: "%.2f", sinceKey), recentlyRaised ? 1 : 0, accept ? 1 : 0)
         if !accept {
-            let why = !Permissions.accessibility ? "no accessibility" : !recentlyRaised ? "no raised hand in last 1s" : asleep ? "hand parked" : sinceKey <= 0.3 ? "typing" : "off"
+            let why = !Permissions.accessibility ? "no accessibility" : !recentlyRaised ? "no raised hand in last 5s" : asleep ? "hand parked" : sinceKey <= 0.3 ? "typing" : "off"
             Diagnostics.shared.log("note", "tap rejected: \(why)")
             return
         }

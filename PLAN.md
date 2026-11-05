@@ -25,13 +25,14 @@ Then: `open ~/Library/Logs/Reach` and hand the newest csv over. Thresholds are s
 
 ## Next, in order
 
-1. **Second protocol run with Accessibility granted.** The first run (2026-11-05 13:27) set
-   the pinch thresholds (0.40 / 0.52) but no click could land because Accessibility was
-   off, so pinch-to-drag and tap-to-click have still never been felt.
-2. **Find the hand at the glass.** In the first run the pose model lost the hand before
-   the fingertip reached the screen; the five glass taps arrived with no hand in frame.
-   The one-second grace window covers it for now. Desk View may hold the hand longer
-   since it looks down at the approach; worth a run on that camera.
+1. **Run tap-to-click on the Desk View camera.** Pinch clicks and drags are proven (fourth
+   run, 2026-11-05 14:32: five pinches, 188 mouse-down frames). Glass taps are not: the
+   front camera never sees the hand between pointing and touching the screen, so every tap
+   arrived 3 to 20 s after the last sighting. The five-second grace window makes "point,
+   then reach and tap" work; Desk View looks down over the approach and may keep the hand
+   in frame the whole way. Same protocol, camera set to Desk View.
+2. **Decide whether tap-to-click earns its place.** If Desk View does not hold the hand, the
+   honest default is pinch only, with tap as an opt-in.
 3. **Knocks and taps sound alike.** Desk knocks hit 5.5x, soft glass taps 6.2x, hard ones
    up to 43x. The microphone alone cannot separate them; the raised-hand gate is what does.
 7. **Tap localisation.** The mic array has several capsules; a tap on the left of the
