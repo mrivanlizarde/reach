@@ -11,12 +11,20 @@ struct HandSample: Sendable {
     let middleMCP: CGPoint
     let confidence: Float
     let time: Double
-    /// Thumb tip to index tip distance, divided by hand size (wrist to middle knuckle),
-    /// so a pinch means the same thing near and far from the camera.
+    let indexMCP: CGPoint
+    let pinkyMCP: CGPoint
+    /// Thumb tip to index tip distance, divided by hand size, so a pinch means the same
+    /// thing near and far from the camera. Hand size is the longest of three palm edges:
+    /// a palm turned edge-on to the camera foreshortens any single one of them.
     var pinchRatio: CGFloat {
-        let handSize = max(hypot(wrist.x - middleMCP.x, wrist.y - middleMCP.y), 0.02)
-        return hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y) / handSize
+        let palm = max(hypot(wrist.x - middleMCP.x, wrist.y - middleMCP.y),
+                       hypot(wrist.x - indexMCP.x, wrist.y - indexMCP.y),
+                       hypot(indexMCP.x - pinkyMCP.x, indexMCP.y - pinkyMCP.y), 0.02)
+        return hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y) / palm
     }
+    /// Fingertip above the wrist in the frame: a hand held up to point, not one resting on
+    /// the keyboard. Typing hands read as pinches to the pose model; this is the gate.
+    var raised: Bool { indexTip.y > wrist.y + 0.02 }
 }
 
 @MainActor
@@ -109,9 +117,11 @@ final class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
             if let obs = request.results?.first {
                 let tips = try obs.recognizedPoints(.all)
                 if let idx = tips[.indexTip], let th = tips[.thumbTip], let w = tips[.wrist], let m = tips[.middleMCP],
+                   let im = tips[.indexMCP], let pm = tips[.littleMCP],
                    idx.confidence > 0.3, th.confidence > 0.3 {
                     sample = HandSample(indexTip: idx.location, thumbTip: th.location, wrist: w.location,
-                                        middleMCP: m.location, confidence: min(idx.confidence, th.confidence), time: t)
+                                        middleMCP: m.location, confidence: min(idx.confidence, th.confidence), time: t,
+                                        indexMCP: im.location, pinkyMCP: pm.location)
                 }
             }
         } catch {

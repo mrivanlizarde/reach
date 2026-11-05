@@ -11,11 +11,22 @@
 - Permission rows that live-refresh while System Settings is open.
 - Launch at login.
 
+## The 60-second tuning protocol
+
+Turn Reach on with the panel open, then, with a hand up to the camera:
+
+1. Open hand, still, three seconds.
+2. Pinch and release, five times, a second apart.
+3. Tap the screen glass five times, a second apart.
+4. Knock the desk twice. Type one sentence on the keyboard.
+5. Quit Reach from the panel.
+
+Then: `open ~/Library/Logs/Reach` and hand the newest csv over. Thresholds are set from it.
+
 ## Next, in order
 
-1. **Live test on the M5 Pro with Ivan's hand.** Thresholds (pinch 0.28/0.40, tap onset
-   6x) were set from Apple's sample and first principles, not from this room. Expect to
-   tune both.
+1. **Set the thresholds from the protocol run.** Pinch 0.28/0.40 and tap onset 6x were set
+   from Apple's sample and first principles, not from this room.
 2. **Tap localisation.** The mic array has several capsules; a tap on the left of the
    glass reaches them in a different order than one on the right. Cross-correlating
    channels could give a coarse x position and confirm the camera's estimate. Needs a

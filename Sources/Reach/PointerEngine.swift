@@ -15,6 +15,9 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     @Published var calibration: CalibrationStep = .idle
     @Published var tapCount = 0
     @Published var fps: Double = 0
+    @Published var pinchRatio: Double = 0
+    @Published var lastTapOnset: Float = 0
+    @Published var handRaised = false
 
     private let tracker = HandTracker()
     private let taps = TapListener()
@@ -76,6 +79,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         }
         tracker.start(cameraID: settings.cameraID)
         if settings.tapSoundToClick { taps.start() }
+        Diagnostics.shared.log("note", "start camera=\(settings.cameraID) tapSens=\(settings.tapSensitivity) smoothing=\(settings.smoothing)")
         status = "Looking for a hand"
     }
 
@@ -161,6 +165,16 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
             if calibration == .idle { status = "Tracking" }
         }
         lastHand = hand
+        handRaised = hand.raised
+        pinchRatio = Double(hand.pinchRatio)
+        Diagnostics.shared.log("hand", String(format: "%.3f", hand.pinchRatio), String(format: "%.2f", hand.confidence),
+                               hand.raised ? 1 : 0, mouseIsDown ? 1 : 0)
+
+        // A hand on the keyboard is not pointing. Let go of anything held and wait.
+        if !hand.raised && calibration == .idle {
+            releaseMouse()
+            return
+        }
 
         // Mirror so moving your hand right moves the pointer right (the camera faces you).
         var p = hand.indexTip
@@ -186,7 +200,8 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         }
 
         // Pinch with hysteresis and a few frames of evidence, as Apple's WWDC20 sample does.
-        if settings.pinchToClick {
+        // Not within a third of a second of a keystroke: that hand is typing, not clicking.
+        if settings.pinchToClick, secondsSinceKey() > 0.3 {
             let ratio = hand.pinchRatio
             if ratio < 0.28 { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.4 { releaseFrames += 1; pinchFrames = 0 }
             if !mouseIsDown, pinchFrames >= 3 { pressMouse() }
@@ -209,11 +224,22 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     /// A tap heard on the glass clicks wherever the hand is. Only when a hand is in view,
     /// so a dropped pen or a knock on the desk does nothing.
     private func handleTap(_ strength: Float) {
-        guard settings.tapSoundToClick, handVisible, calibration == .idle, Permissions.accessibility else { return }
+        lastTapOnset = strength
+        let sinceKey = secondsSinceKey()
+        let accept = settings.tapSoundToClick && handVisible && handRaised && calibration == .idle
+            && Permissions.accessibility && sinceKey > 0.3
+        Diagnostics.shared.log("tap", strength, String(format: "%.2f", sinceKey), handRaised ? 1 : 0, accept ? 1 : 0)
+        guard accept else { return }
         tapCount += 1
         if mouseIsDown { return }
         post(.leftMouseDown, at: lastPoint)
         post(.leftMouseUp, at: lastPoint)
+    }
+
+    /// Time since the last physical keystroke anywhere. Needs no permission: it reads the
+    /// session's event clock, not the keys. A keyboard tap sounds exactly like a screen tap.
+    private func secondsSinceKey() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
     }
 
     private func pressMouse() {

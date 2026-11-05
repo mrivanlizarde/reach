@@ -41,6 +41,7 @@ fills in when a hand is tracked.
 | Pinch | Pinch and hold over a Finder icon; it must drag. Release; it must drop. |
 | Tap-to-click | Tap the glass once with a hand in view; the counter in the panel increments and a click lands. Knock the desk: nothing should happen. |
 | Calibration | Calibrate, then point at each screen corner: the pointer must reach every edge without the hand leaving the frame. |
+| Thresholds | Run the 60-second protocol in PLAN.md, then read `~/Library/Logs/Reach/signals <date>.csv`. Pinched frames must sit well under 0.28 and open frames well over 0.40; screen taps must show onset above the sensitivity's ratio and desk knocks and keystrokes must be dropped (tap rows with d=0). |
 | Panel layout | Open the popover in light and dark mode and look. 300pt wide, nothing clipped. |
 | Permissions | Revoke one in System Settings; the panel row must go orange within a second and the Allow… button must open the right pane. |
 
@@ -60,6 +61,7 @@ fills in when a hand is tracked.
   fingertip before calibration and mapping; the preview mirrors the image and the
   overlay; the stored region is in mirrored coordinates. Mirror in a second place and
   calibration will invert.
+- **Two gates, keep both.** The pointer follows only a raised hand (index tip above wrist in frame), and no pinch or tap counts within 0.3 s of a keystroke. Without them, typing clicks.
 - **Tap detection is gated on a visible hand.** A knock on the desk or a dropped pen
   with no hand in view does nothing. Keep that gate.
 

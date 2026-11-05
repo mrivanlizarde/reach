@@ -86,6 +86,15 @@ struct PanelView: View {
                 Slider(value: $settings.smoothing, in: 0...1)
                 Text(engine.handVisible ? "\(Int(engine.fps)) fps" : " ").font(.caption).monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
             }
+            if engine.handVisible {
+                // The numbers the thresholds see. Pinch fires below 0.28, releases above 0.40.
+                HStack(spacing: 10) {
+                    Text(String(format: "pinch %.2f", engine.pinchRatio))
+                    Text(engine.handRaised ? "raised" : "resting")
+                    if engine.lastTapOnset > 0 { Text(String(format: "tap %.0fx", engine.lastTapOnset)) }
+                }
+                .font(.caption2).monospacedDigit().foregroundStyle(.tertiary)
+            }
         }
     }
 
@@ -193,6 +202,7 @@ struct PanelView: View {
                 Toggle("Mirror camera", isOn: $settings.mirror)
                 Toggle("Show preview", isOn: $settings.showPreview)
                 Button("Reset calibration") { settings.resetRegion() }
+                Button("Show signal log") { NSWorkspace.shared.activateFileViewerSelecting([Diagnostics.shared.url]) }
                 Divider()
                 Link("Source on GitHub", destination: URL(string: "https://github.com/mrivanlizarde/reach")!)
             } label: { Image(systemName: "ellipsis.circle") }

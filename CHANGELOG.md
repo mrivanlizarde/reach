@@ -1,5 +1,22 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, later — Measure before tuning
+
+Ivan said "tune it" before the app had ever been switched on, so there was no signal to
+tune from. Instead of guessing new numbers, the app now writes every signal the
+thresholds judge to `~/Library/Logs/Reach/signals <date>.csv` (pinch ratio, confidence,
+raised, audio onset, tap decisions), and the panel shows the live pinch ratio and last tap
+strength. Thresholds get set from that file after a real run.
+
+Two false-trigger traps closed on sight. A typing hand reads as a pinch to the pose model
+and a keystroke sounds like a screen tap, so: the pointer only follows a hand whose index
+tip is above its wrist in the frame (raised, not resting on the keyboard), and neither a
+pinch nor a tap counts within 0.3 s of a physical keystroke. The keystroke clock comes
+from `CGEventSource.secondsSinceLastEventType`, which needs no permission.
+
+Hand size for the pinch ratio is now the longest of three palm edges rather than one,
+because a palm turned edge-on foreshortens any single edge and inflated the ratio.
+
 ## 2026-11-05 — First build
 
 Built from nothing in one session on Ivan's ask for a camera-based "touchscreen". The

@@ -12,6 +12,8 @@ final class TapListener {
     private var lastTap: Double = 0
     private var armed = true
     var onTap: ((Float) -> Void)?
+    /// The most recent onset ratio worth noticing, for the panel's readout.
+    private(set) var lastOnset: Float = 0
     /// 0 = needs a hard knock, 1 = a brush of the glass. Mapped onto the onset ratio.
     var sensitivity: Double = 0.5
     private(set) var isRunning = false
@@ -65,7 +67,12 @@ final class TapListener {
         // Sensitivity 0.5 asks for a 6x jump in the high band; 1.0 for 3x; 0 for 9x.
         let needed = Float(9.0 - 6.0 * sensitivity)
 
-        if armed, onset > needed, loud > 2.5, now - lastTap > 0.18 {
+        let fire = armed && onset > needed && loud > 2.5 && now - lastTap > 0.18
+        if onset > 2 {
+            lastOnset = onset
+            Diagnostics.shared.log("audio", onset, loud, hi, fire ? 1 : 0)
+        }
+        if fire {
             lastTap = now
             armed = false
             onTap?(onset)
