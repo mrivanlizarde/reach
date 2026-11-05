@@ -90,7 +90,7 @@ struct PanelView: View {
                 // The numbers the thresholds see. Pinch fires below 0.40, releases above 0.52.
                 HStack(spacing: 10) {
                     Text(String(format: "pinch %.2f", engine.pinchRatio))
-                    Text(engine.handRaised ? "raised" : "resting")
+                    Text(engine.asleep ? "parked" : engine.handRaised ? "raised" : "resting")
                     if engine.lastTapOnset > 0 { Text(String(format: "tap %.0fx", engine.lastTapOnset)) }
                 }
                 .font(.caption2).monospacedDigit().foregroundStyle(.tertiary)

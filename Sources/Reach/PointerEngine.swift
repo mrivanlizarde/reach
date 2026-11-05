@@ -18,6 +18,12 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     @Published var pinchRatio: Double = 0
     @Published var lastTapOnset: Float = 0
     @Published var handRaised = false
+    /// A hand that has not moved for two seconds is parked: it stops driving the pointer
+    /// until it moves again. Two runs on 2026-11-05 showed the pose model holding a
+    /// motionless "hand" at 30 fps for minutes; with the grant on, that pins the pointer.
+    @Published var asleep = false
+    private var recentTips: [(t: Double, p: CGPoint)] = []
+    private var sleepAnchor: CGPoint?
 
     private let tracker = HandTracker()
     private let taps = TapListener()
@@ -181,6 +187,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
             if handVisible, CACurrentMediaTime() - lastSeen > 0.4 {
                 handVisible = false
                 handRaised = false
+                asleep = false; sleepAnchor = nil; recentTips = []
                 lastHand = nil
                 Diagnostics.shared.log("note", "hand lost")
                 releaseMouse()
@@ -217,6 +224,30 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         if calibration != .idle {
             feedCalibration(p)
             return
+        }
+
+        // Stillness gate. Spread of the last two seconds of fingertip positions under 1.5%
+        // of the frame means parked; waking needs a move of 3% from where it fell asleep.
+        recentTips.append((hand.time, p))
+        recentTips.removeAll { $0.t < hand.time - 2.0 }
+        if asleep {
+            if let a = sleepAnchor, hypot(p.x - a.x, p.y - a.y) > 0.03 {
+                asleep = false; sleepAnchor = nil; recentTips = [(hand.time, p)]
+                fx.reset(); fy.reset()
+                Diagnostics.shared.log("note", "hand awake")
+                status = "Tracking"
+            } else {
+                return
+            }
+        } else if recentTips.count > 20, recentTips.first!.t < hand.time - 1.9 {
+            let xs = recentTips.map(\.p.x), ys = recentTips.map(\.p.y)
+            if xs.max()! - xs.min()! < 0.015, ys.max()! - ys.min()! < 0.015 {
+                asleep = true; sleepAnchor = p
+                releaseMouse()
+                Diagnostics.shared.log("note", "hand asleep")
+                status = "Still. Move to wake"
+                return
+            }
         }
 
         // Map the calibrated region onto the main screen. Vision y grows upward; screen y
@@ -263,11 +294,11 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         lastTapOnset = strength
         let sinceKey = secondsSinceKey()
         let recentlyRaised = CACurrentMediaTime() - lastRaisedSeen < 1.0
-        let accept = settings.tapSoundToClick && recentlyRaised && calibration == .idle
+        let accept = settings.tapSoundToClick && recentlyRaised && !asleep && calibration == .idle
             && Permissions.accessibility && sinceKey > 0.3
         Diagnostics.shared.log("tap", strength, String(format: "%.2f", sinceKey), recentlyRaised ? 1 : 0, accept ? 1 : 0)
         if !accept {
-            let why = !Permissions.accessibility ? "no accessibility" : !recentlyRaised ? "no raised hand in last 1s" : sinceKey <= 0.3 ? "typing" : "off"
+            let why = !Permissions.accessibility ? "no accessibility" : !recentlyRaised ? "no raised hand in last 1s" : asleep ? "hand parked" : sinceKey <= 0.3 ? "typing" : "off"
             Diagnostics.shared.log("note", "tap rejected: \(why)")
             return
         }

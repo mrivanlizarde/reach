@@ -48,9 +48,20 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc signing with a stable identifier so the camera, microphone and Accessibility
-# grants survive rebuilds. Without the identifier every build is a new app to TCC.
-codesign --force --deep --sign - --identifier com.ivanlizarde.reach "$APP"
+# Sign with a real identity when one is in the keychain. An ad-hoc signature ties every
+# privacy grant to one exact build: on 2026-11-05 the Device Control (Accessibility) switch
+# was on in System Settings and the app still read as untrusted. A Developer ID or Apple
+# Development identity gives TCC a team-based requirement that survives every rebuild.
+IDS="$(security find-identity -v -p codesigning 2>/dev/null)"
+IDENTITY="$(echo "$IDS" | grep -oE '"Developer ID Application[^"]+"' | head -1 | tr -d '"')"
+[[ -z "$IDENTITY" ]] && IDENTITY="$(echo "$IDS" | grep -oE '"Apple Development[^"]+"' | head -1 | tr -d '"')"
+if [[ -n "$IDENTITY" ]]; then
+  echo "Signing as: $IDENTITY"
+  codesign --force --deep --sign "$IDENTITY" --identifier com.ivanlizarde.reach "$APP"
+else
+  echo "No signing identity found; ad-hoc signing (privacy grants will not survive rebuilds)"
+  codesign --force --deep --sign - --identifier com.ivanlizarde.reach "$APP"
+fi
 echo "Built: $APP"
 
 if [[ "$2" == "--install" ]]; then

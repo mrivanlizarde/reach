@@ -47,9 +47,12 @@ fills in when a hand is tracked.
 
 ## Rules of engagement
 
-- **The bundle identifier is load-bearing.** `make-app.sh` ad-hoc signs with
-  `--identifier com.ivanlizarde.reach`. Without a stable identifier every rebuild is a
-  new app to TCC and the Camera, Microphone, and Accessibility grants vanish.
+- **Sign with a real identity.** `make-app.sh` signs with the Developer ID (or Apple
+  Development) certificate in the keychain, falling back to ad-hoc only when none exists.
+  Ad-hoc ties every privacy grant to one exact build: on 2026-11-05 the Device Control
+  switch was on in System Settings and `AXIsProcessTrusted` still returned false. If a
+  grant ever stops being seen after a rebuild, `codesign -dv` the installed app and check
+  it is not ad-hoc; then `tccutil reset Accessibility com.ivanlizarde.reach` and re-add.
 - **LSUIElement stays true.** The app is a menu bar extra by design. There is no window
   to show, so nothing is lost.
 - **Mouse events go through `CGEvent.post(tap: .cghidEventTap)`.** That needs the

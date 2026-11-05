@@ -1,5 +1,21 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, late — Real signature, and a parked hand stops driving the pointer
+
+Second run read. Device Control and Data Access showed Reach switched on and the app
+still read as untrusted, before and after a relaunch of the same binary. The ad-hoc
+signature was the cause: TCC had nothing stable to bind the grant to. `make-app.sh` now
+signs with the Developer ID certificate in the keychain (Apple Development as fallback,
+ad-hoc only when neither exists), which gives the grant a team-based requirement that
+survives rebuilds. The stale entry was reset with `tccutil`, so Reach has to be added once
+more.
+
+Also from the logs: the pose model held a motionless "hand" at 30 fps for over two
+minutes across two launches, at a steady pinch ratio near 1.1. With the grant on, that
+would have pinned the pointer. A hand that has not moved for two seconds is now parked:
+it stops driving the pointer and cannot click until it moves again. The panel says
+"parked" and the status reads "Still. Move to wake".
+
 ## 2026-11-05, evening — Launch hang when tracking was saved on
 
 Found by sampling the process after a relaunch produced no log and no icon. With
