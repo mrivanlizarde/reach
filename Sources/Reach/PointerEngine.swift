@@ -105,7 +105,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
             return
         }
         if !Permissions.accessibility {
-            status = "Accessibility access needed"
+            status = "Needs Device Control and Data Access"
             Permissions.promptAccessibility()
         }
         tracker.start(cameraID: settings.cameraID)

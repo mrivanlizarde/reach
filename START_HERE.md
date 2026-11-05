@@ -30,7 +30,7 @@ cd ~/Code/reach && ./make-app.sh release --install && open ~/Applications/Reach.
 ```
 
 A hand icon appears in the menu bar. Click it, turn the switch on, grant Camera, then
-Accessibility (System Settings opens; add Reach). Show a hand to the camera. The icon
+Device Control and Data Access (Accessibility before macOS 27; System Settings opens, press +, add Reach). Show a hand to the camera. The icon
 fills in when a hand is tracked.
 
 ## Verify a change — reading the code is not verification

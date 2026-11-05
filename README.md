@@ -18,9 +18,9 @@ Requires macOS 15 or later and Xcode's command line tools.
 ## Use
 
 1. Click the hand in the menu bar and turn the switch on.
-2. Allow **Camera** when asked. Then allow **Accessibility** (the panel opens System
-   Settings for you; add Reach to the list). Accessibility is what lets the app move the
-   pointer and click.
+2. Allow **Camera** when asked. Then allow **Device Control and Data Access** (called Accessibility
+   before macOS 27; the panel opens System Settings for you, press + and add Reach from
+   `~/Applications`). That grant is what lets the app move the pointer and click.
 3. Hold a hand up to the camera. The pointer follows your index finger.
 4. **Calibrate** once: point at the top-left corner of the screen and hold still, then the
    bottom-right. From then on the space between those two points is the whole screen, so

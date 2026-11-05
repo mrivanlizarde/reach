@@ -167,7 +167,7 @@ struct PanelView: View {
             permissionRow("Camera", ok: Permissions.camera == .authorized) {
                 if Permissions.camera == .notDetermined { Permissions.requestCamera { _ in } } else { Permissions.openCameraSettings() }
             }
-            permissionRow("Accessibility", ok: Permissions.accessibility, detail: "Moves the pointer and clicks") {
+            permissionRow("Device Control", ok: Permissions.accessibility, detail: "Lets Reach move the pointer and click. Add Reach under Device Control and Data Access.") {
                 Permissions.promptAccessibility(); Permissions.openAccessibilitySettings()
             }
             if settings.tapSoundToClick {

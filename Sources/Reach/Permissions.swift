@@ -5,7 +5,8 @@ import AppKit
 enum Permissions {
     static var camera: AVAuthorizationStatus { AVCaptureDevice.authorizationStatus(for: .video) }
     static var microphone: AVAuthorizationStatus { AVCaptureDevice.authorizationStatus(for: .audio) }
-    /// Posting mouse events needs the Accessibility grant. Without it the hand is tracked
+    /// Posting mouse events needs the Accessibility grant, which macOS 27 lists as
+    /// "Device Control and Data Access" in Privacy & Security. Same grant, new name. Without it the hand is tracked
     /// and nothing moves, which is the confusing failure, so the UI names it loudly.
     static var accessibility: Bool { AXIsProcessTrusted() }
 
