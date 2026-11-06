@@ -92,6 +92,16 @@ struct HandSample: Sendable {
         }
         return dist(self[tip], wrist) > dist(self[pip], wrist) * 1.12
     }
+    /// The raw numbers behind `extended`, for the log: tip-to-wrist over middle-joint-to-wrist
+    /// per finger (thumb measured from the little knuckle). Extended is over 1.12 (thumb 1.08).
+    var extensionRatios: String {
+        Finger.allCases.map { f -> String in
+            let num: CGFloat, den: CGFloat
+            if f == .thumb { num = dist(self[.thumbTip], pinkyMCP); den = dist(self[.thumbIP], pinkyMCP) }
+            else { num = dist(self[f.tip], wrist); den = dist(self[f.pip], wrist) }
+            return String(format: "%.2f", den > 0.001 ? num / den : 0)
+        }.joined(separator: "|")
+    }
     /// Thumb, index, middle, ring, little as five digits, 1 for extended. "01100" is two up.
     var extendedMask: String { Finger.allCases.map { extended($0) ? "1" : "0" }.joined() }
     /// Index and middle up, ring and little down: the scroll pose.

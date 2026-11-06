@@ -40,7 +40,7 @@ fills in when a hand is tracked.
 |---|---|
 | Anything in the tracker or engine | Build, install, launch, turn it on, move your hand. The preview draws the whole hand with a ring on the knuckles; the pointer must follow the ring with no visible shake, and must not move when you wiggle your fingers. |
 | Steadiness | Hold the pointer over a small target (a window's close button) and pinch. The click must land on it. Read the newest csv: `pose` rows carry the gap between hand and cursor in px in column d; while aiming it should sit under 10. |
-| Pinch | Pinch over a Finder icon and move while pinched; it must drag once your hand has moved a little. Pinch and release without moving; it must click, not drag. |
+| Pinch | Pinch and release over a small target without moving; the log must show `press` then `click`, and the target must take the click. Pinch over a Finder icon and move; `drag` must appear and the icon must follow. Pinch, then take the hand out of frame; `press cancelled`, and nothing must have been clicked. |
 | Right-click, scroll, fist | Thumb to middle finger with the index out: a context menu must open. Two fingers up over a long page, move the hand: the page must scroll with the hand. Make a fist and move the hand: the cursor must stay put. The panel's readout shows the five fingers as digits and the mode. |
 | Tap-to-click | Tap the glass once with a hand in view; the counter in the panel increments and a click lands. Knock the desk: nothing should happen. |
 | Calibration | Calibrate, then point at each screen corner: the pointer must reach every edge without the hand leaving the frame. |
@@ -76,12 +76,22 @@ fills in when a hand is tracked.
   (Ivan, 2026-11-05, "it's following my fingers too accurately"). Calibration measures
   the same anchor. The stillness gate still watches the tip, on purpose: a pinch moves
   the tip and so wakes a parked hand, while the phantom hands it guards against never move.
-- **Three steadiers, keep all three.** The cursor trails the hand on a 5 px string
-  (jitter inside it never posts), it is pinned from the first frame the thumb starts
-  closing until the pinch lands or 0.7 s pass, and a pinch stays a click until the hand
-  has moved 14 px from the press point. Whenever the cursor is held while the hand keeps
-  moving, the gap is pinned as an offset that fades over about half a second, so letting
-  go never jumps. Remove any of them and the click-time drift comes back.
+- **A click is posted on release, at the point aimed before the thumb moved.** The
+  knuckles turn as the thumb closes and keep turning through a held pinch: in the 17:02
+  run every pinch held still drifted past 14 px. So a believed pinch presses nothing. It
+  takes the cursor position from a quarter second earlier, walks the cursor back there,
+  and waits: travel past 24 px and it is a drag from that point (button down then), let go
+  first and it is a click, down and up, there. A pinch that leaves the frame, parks, or
+  drops to the keyboard is cancelled without a click (`releaseAll`), never completed.
+- **The other steadiers, keep them too.** The cursor trails the hand on a 5 px string
+  (jitter inside it never posts), and it is pinned while the pinch ratio is under 0.35
+  for up to half a second. Whenever the cursor is held while the hand keeps moving, the
+  gap is pinned as an offset that fades over about half a second, so letting go never
+  jumps.
+- **Pinch gate is 0.22 to press, 0.30 to release.** A pointing hand with the thumb
+  relaxed beside the index sits at 0.4 to 0.6; the earlier 0.40 / 0.52 gate, set from an
+  open palm, held the button down for 27 s on such a hand. Deliberate pinches hold at
+  0.03 to 0.12. Re-derive from `hand` rows, never by feel.
 - **Mirror once.** The camera faces you, so raw x is reversed. The engine mirrors the
   anchor before calibration and mapping; the preview mirrors the image and the
   overlay; the stored region is in mirrored coordinates. Mirror in a second place and

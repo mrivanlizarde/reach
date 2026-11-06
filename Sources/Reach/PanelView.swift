@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Combine
 
 /// The whole interface. One popover: a switch, a live preview, two click methods, and the
 /// permissions it depends on. Nothing that needs a window.

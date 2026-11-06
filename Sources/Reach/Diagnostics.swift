@@ -4,9 +4,11 @@ import Foundation
 /// file and not from a feeling. One CSV per launch in ~/Library/Logs/Reach/.
 ///
 /// Columns: t, kind, a, b, c, d
-///   hand : a=pinchRatio  b=confidence  c=raised(0/1)  d=state(0 open,1 pinched,2 right-pinched)
-///   pose : a=fingers(thumb,index,middle,ring,little as 0/1)  b=middlePinchRatio  c=mode(point,aim,scroll,hold)
-///          d=gap in px between where the hand points and where the cursor is (what the steadying absorbed)
+///   hand : a=pinchRatio  b=middlePinchRatio  c=raised(0/1)  d=state(0 open,1 pinched,2 right-pinched)
+///   pose : a=fingers(thumb,index,middle,ring,little as 0/1)  b=five extension ratios joined by |
+///          c=mode(point,aim,scroll,hold)  d=gap|step: px between hand and cursor, and px the
+///          filtered hand point moved this frame (jitter when the hand is still)
+///   note : press (pinch held), click / right click (let go without travelling), drag (travelled)
 ///   audio: a=onset(hi/slowHigh)  b=loud(rms/slowLevel)  c=hiRMS  d=fired(0/1)   (only when onset > 2)
 ///   tap  : a=onset  b=0  c=0  d=accepted(0/1)
 ///   key  : a=secondsSinceKey (a tap or pinch was dropped because of recent typing)

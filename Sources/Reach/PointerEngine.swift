@@ -65,12 +65,22 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     // them is pinned as an offset that then fades out, so letting go never makes the
     // cursor jump to where the hand already is.
     private let lazyRadius: CGFloat = 5
-    private let aimHold: Double = 0.7
-    private let dragSlop: CGFloat = 14
+    private let aimHold: Double = 0.5
+    private let dragSlop: CGFloat = 24
+    /// How far back the click reaches for its point. The thumb takes about six frames to
+    /// close and the pinch three more to be believed, and the knuckles turn the whole way.
+    /// In Ivan's run of 2026-11-05 17:02 every one of eleven pinches drifted past the old
+    /// 14 px slop while held still. The click lands where the cursor was before the thumb
+    /// moved, and the button is not pressed until the pinch either travels (a drag) or lets
+    /// go (a click at that one point).
+    private let aimLookback: Double = 0.25
     private var aimSince: Double?
     private var pressPoint: CGPoint?
+    private var pressTime: Double = 0
+    private var pressed = false      // the pinch is held; the button may not be down yet
     private var dragging = false
     private var pin = CGVector.zero
+    private var trail: [(t: Double, p: CGPoint)] = []
 
     // MARK: Gestures
     private var twoFrames = 0
@@ -258,7 +268,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         if hand.raised { lastRaisedSeen = lastSeen }
         pinchRatio = Double(hand.pinchRatio)
         fingers = hand.extendedMask
-        Diagnostics.shared.log("hand", String(format: "%.3f", hand.pinchRatio), String(format: "%.2f", hand.confidence),
+        Diagnostics.shared.log("hand", String(format: "%.3f", hand.pinchRatio), String(format: "%.3f", hand.middlePinchRatio),
                                hand.raised ? 1 : 0, mouseIsDown ? 1 : rightIsDown ? 2 : 0)
 
         // A hand on the keyboard is not pointing. Let go of anything held and wait.
@@ -311,15 +321,19 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         guard let target = screenTarget(for: p, at: hand.time) else { return }
         let dt = lastFrameTime > 0 ? min(hand.time - lastFrameTime, 0.2) : 1.0 / 30
         lastFrameTime = hand.time
+        let targetStep = hypot(target.x - lastTarget.x, target.y - lastTarget.y)
         lastTarget = target
+        trail.append((hand.time, lastPoint))
+        trail.removeAll { $0.t < hand.time - 1.0 }
 
         let ratio = hand.pinchRatio
         let mratio = hand.middlePinchRatio
-        let rightPose = settings.rightClickPinch && hand.extended(.index) && ratio > 0.45
+        let rightPose = settings.rightClickPinch && hand.extended(.index) && ratio > 0.35
         // "Closing": a thumb on its way to a fingertip. The aim pin starts here, before the
-        // pinch itself is certain.
-        let closing = ratio < 0.58 || (rightPose && mratio < 0.58)
-        let anyDown = mouseIsDown || rightIsDown
+        // pinch itself is certain. A pointing hand with the thumb relaxed alongside sits at
+        // 0.4 to 0.6 (run of 17:02), so closing has to start well under that.
+        let closing = ratio < 0.35 || (rightPose && mratio < 0.35)
+        let anyDown = mouseIsDown || rightIsDown   // a pinch is held, button posted or not
 
         // Scroll pose, with a few frames of evidence either way.
         if settings.scrollGesture, hand.isTwoFinger, !closing, !anyDown { twoFrames += 1; notTwoFrames = 0 }
@@ -370,8 +384,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
             if anyDown, !dragging, let pp = pressPoint {
                 let goal = CGPoint(x: target.x + pin.dx, y: target.y + pin.dy)
                 if hypot(goal.x - pp.x, goal.y - pp.y) > dragSlop {
-                    dragging = true
-                    Diagnostics.shared.log("note", "drag")
+                    beginDrag()
                 }
             }
         } else {
@@ -390,22 +403,24 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
                 move(to: np)
             }
         }
-        Diagnostics.shared.log("pose", fingers, String(format: "%.3f", mratio), mode.rawValue,
-                               String(format: "%.1f", hypot(target.x + pin.dx - lastPoint.x, target.y + pin.dy - lastPoint.y)))
+        Diagnostics.shared.log("pose", fingers, hand.extensionRatios, mode.rawValue,
+                               String(format: "%.1f|%.1f", hypot(target.x + pin.dx - lastPoint.x, target.y + pin.dy - lastPoint.y), targetStep))
 
         // Pinch with hysteresis and a few frames of evidence, as Apple's WWDC20 sample does.
         // Not within a third of a second of a keystroke: that hand is typing, not clicking.
         // Thumb to index clicks. Thumb to middle, with the index still pointing, right-clicks.
         if settings.pinchToClick, secondsSinceKey() > 0.3, !scrolling, !holding {
-            let rightWins = rightPose && mratio < 0.40
-            let leftWins = ratio < 0.40 && !rightWins
-            // From Ivan's run of 2026-11-05: pinched frames sat at 0.11 to 0.33, and no open or
-            // resting frame fell under 0.59. The old 0.28 sat on top of the pinch cluster.
-            if leftWins { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.52 { releaseFrames += 1; pinchFrames = 0 }
+            let rightWins = rightPose && mratio < 0.22
+            let leftWins = ratio < 0.22 && !rightWins
+            // From Ivan's runs of 2026-11-05: a deliberate pinch goes from 0.8 to 0.05 in three
+            // frames and holds at 0.03 to 0.12. A pointing hand with the thumb relaxed beside
+            // the index sits at 0.4 to 0.6, and under the old 0.40 / 0.52 gate it held the
+            // button down for 27 seconds in the 17:02 run. Press under 0.22, let go over 0.30.
+            if leftWins { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.30 { releaseFrames += 1; pinchFrames = 0 }
             if !anyDown, pinchFrames >= 3 { pressMouse() }
             if mouseIsDown, releaseFrames >= 3 { releaseMouse() }
 
-            if rightWins { rightFrames += 1; rightReleaseFrames = 0 } else if mratio > 0.52 || !rightPose { rightReleaseFrames += 1; rightFrames = 0 }
+            if rightWins { rightFrames += 1; rightReleaseFrames = 0 } else if mratio > 0.30 || !rightPose { rightReleaseFrames += 1; rightFrames = 0 }
             if !anyDown, rightFrames >= 3 { pressRight() }
             if rightIsDown, rightReleaseFrames >= 3 { releaseRight() }
         } else if anyDown {
@@ -479,58 +494,94 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     private func move(to p: CGPoint) {
         lastPoint = p
         guard Permissions.accessibility else { return }
-        post(mouseIsDown ? .leftMouseDragged : rightIsDown ? .rightMouseDragged : .mouseMoved, at: p)
+        post(mouseIsDown && dragging ? .leftMouseDragged : rightIsDown && dragging ? .rightMouseDragged : .mouseMoved, at: p)
     }
 
+    /// Where the cursor was `aimLookback` seconds ago: the point aimed at before the thumb
+    /// began to move.
+    private func aimedPoint(at t: Double) -> CGPoint {
+        trail.last(where: { $0.t <= t - aimLookback })?.p ?? trail.first?.p ?? lastPoint
+    }
+
+    /// A pinch is held. The button is not posted yet: if the hand travels it becomes a
+    /// drag from the aimed point, and if it lets go first it is a click at that point.
     private func pressMouse() {
         guard Permissions.accessibility else { return }
         mouseIsDown = true
         pinching = true
-        pressPoint = lastPoint
-        dragging = false
-        aimSince = nil
-        pinCursor()
-        post(.leftMouseDown, at: lastPoint)
-    }
-
-    private func releaseMouse() {
-        pinching = false
-        guard mouseIsDown else { return }
-        mouseIsDown = false
-        post(.leftMouseUp, at: lastPoint)
-        endPress()
+        beginPress()
     }
 
     private func pressRight() {
         guard Permissions.accessibility else { return }
         rightIsDown = true
         rightPinching = true
-        pressPoint = lastPoint
+        beginPress()
+    }
+
+    private func beginPress() {
+        pressTime = lastFrameTime
+        pressPoint = aimedPoint(at: lastFrameTime)
+        pressed = true
         dragging = false
         aimSince = nil
+        // Walk the cursor back to the aimed point so what the user sees is where the click
+        // will land.
+        if let pp = pressPoint, pp != lastPoint { lastPoint = pp; post(.mouseMoved, at: pp) }
         pinCursor()
-        post(.rightMouseDown, at: lastPoint, button: .right)
+        Diagnostics.shared.log("note", "press")
+    }
+
+    private func beginDrag() {
+        guard let pp = pressPoint else { return }
+        dragging = true
+        post(mouseIsDown ? .leftMouseDown : .rightMouseDown, at: pp, button: mouseIsDown ? .left : .right)
+        Diagnostics.shared.log("note", "drag")
+    }
+
+    private func releaseMouse() {
+        pinching = false
+        guard mouseIsDown else { return }
+        mouseIsDown = false
+        endPress(button: .left)
     }
 
     private func releaseRight() {
         rightPinching = false
         guard rightIsDown else { return }
         rightIsDown = false
-        post(.rightMouseUp, at: lastPoint, button: .right)
-        endPress()
+        endPress(button: .right)
     }
 
-    /// After a click or drag ends, the hand is wherever the release left it. Pin so the
-    /// cursor eases over instead of jumping.
-    private func endPress() {
+    /// The pinch let go. A drag ends where the cursor is; a click lands, down and up, at
+    /// the aimed point. Then pin so the cursor eases over to the hand instead of jumping.
+    private func endPress(button: CGMouseButton) {
+        let down: CGEventType = button == .left ? .leftMouseDown : .rightMouseDown
+        let up: CGEventType = button == .left ? .leftMouseUp : .rightMouseUp
+        if dragging {
+            post(up, at: lastPoint, button: button)
+        } else if let pp = pressPoint {
+            post(down, at: pp, button: button)
+            post(up, at: pp, button: button)
+            Diagnostics.shared.log("note", button == .left ? "click" : "right click")
+        }
         pressPoint = nil
+        pressed = false
         dragging = false
         pinCursor()
     }
 
+    /// Let go of everything without clicking. A hand that leaves the frame, parks, or drops
+    /// to the keyboard mid-pinch must not fire the click it never finished; a drag in
+    /// progress is dropped where it is.
     private func releaseAll() {
-        releaseMouse()
-        releaseRight()
+        if mouseIsDown || rightIsDown {
+            if dragging { post(mouseIsDown ? .leftMouseUp : .rightMouseUp, at: lastPoint, button: mouseIsDown ? .left : .right) }
+            Diagnostics.shared.log("note", dragging ? "drag dropped" : "press cancelled")
+        }
+        mouseIsDown = false; rightIsDown = false
+        pinching = false; rightPinching = false
+        pressPoint = nil; pressed = false; dragging = false
         pinchFrames = 0; releaseFrames = 0; rightFrames = 0; rightReleaseFrames = 0
     }
 

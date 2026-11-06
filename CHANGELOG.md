@@ -1,5 +1,31 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, 17:20 — Clicks land on release, at the point aimed before the thumb moved
+
+Read Ivan's 17:02 run (80 s, 2011 frames). Two findings, both from the numbers.
+
+**Every one of eleven pinches became a drag.** The clean ones (0.8 to 0.05 in three
+frames, held 0.7 s, released) crossed the 14 px drag slop while held still: the knuckles
+turn as the thumb closes and keep turning through the hold. Fix: the button is no longer
+pressed when the pinch is believed. The pinch is held; if the hand then travels past 24 px
+it becomes a drag from the aimed point, and if it lets go first it is a click, down and
+up, at that one point. The aimed point is where the cursor was a quarter second before
+the pinch was believed, before the thumb started to move, and the cursor walks back there
+so what you see is where the click lands. A pinch that leaves the frame, parks, or drops
+to the keyboard is cancelled, never clicked.
+
+**One pinch stayed pressed for 27 seconds.** A pointing hand with the thumb relaxed beside
+the index sits at 0.4 to 0.6 on the pinch ratio; the gate was press under 0.40, release
+over 0.52, so a relaxed hand could never let go. Deliberate pinches hold at 0.03 to 0.12.
+Gate is now press under 0.22, release over 0.30, aim pin under 0.35 (it was 0.58, which
+froze the cursor for 0.7 s at random while pointing: 223 frames of it in the run).
+
+The finger test read all five fingers up in 79% of frames and the thumb down in most of
+the rest; no two-finger or fist frames appeared, so the scroll and hold gestures are still
+unproven. The `pose` row now carries the five raw extension ratios and the per-frame step
+of the hand point (the dead zone absorbed only 18% of pointing frames, so the next run
+needs a ten-second still hold to separate jitter from motion).
+
 ## 2026-11-05, 16:15 — Steady cursor, five fingers
 
 Ivan's first hour of real use: "the cursor is too shaky; when I start to click it follows

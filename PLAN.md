@@ -18,11 +18,14 @@
 
 Turn Reach on with the panel open, then, with a hand up to the camera:
 
-1. Open hand, still, three seconds.
-2. Pinch and release, five times, a second apart.
-3. Tap the screen glass five times, a second apart.
-4. Knock the desk twice. Type one sentence on the keyboard.
-5. Quit Reach from the panel.
+1. Point at one spot and hold the hand as still as you can, ten seconds.
+2. Pinch and release, five times, a second apart, without moving the hand.
+3. Pinch, move the hand across the screen, release. Twice.
+4. Thumb to middle finger with the index out, release. Three times.
+5. Index and middle up, others curled, move the hand up and down for five seconds.
+6. Make a fist and move the hand around for five seconds.
+7. Type one sentence on the keyboard.
+8. Quit Reach from the panel.
 
 Then: `open ~/Library/Logs/Reach` and hand the newest csv over. Thresholds are set from it.
 
@@ -46,9 +49,10 @@ Then: `open ~/Library/Logs/Reach` and hand the newest csv over. Thresholds are s
 6. **Hover intent.** Ignore the pointer when the hand is resting (very low velocity for
    several seconds) so it does not drift across the screen while you read. Partly covered
    by the stillness gate and the fist hold.
-8. **Steadiness from data.** The first day's shake was fixed from reasoning, not a log;
-   the `pose` rows now record the gap in px. Read one run and set the dead zone and the
-   aim hold from it.
+8. **Steadiness from data.** The 17:02 run set the click (on release, at the point aimed
+   a quarter second before the pinch) and the pinch gate (0.22 / 0.30). Still open: the
+   dead zone. It absorbed only 18% of pointing frames; the `pose` row now logs the
+   per-frame step, and the ten-second hold in the protocol is what sizes it.
 
 ## Open questions
 
