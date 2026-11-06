@@ -1,11 +1,12 @@
 # START HERE — Reach
 
 **What this is.** A macOS menu bar app that turns the MacBook's built-in camera into a
-pointing device. Vision's hand pose detector finds your index fingertip in every frame,
-a One Euro filter steadies it, and the pointer follows. A pinch clicks (hold it to drag),
-and the microphone array listens for the sound of a fingertip tapping the glass so a real
-tap on the screen clicks too. The camera says where; the mics say when. No Dock icon, no
-window: one status item, one popover.
+pointing device. Vision's hand pose detector finds all 21 joints of your hand in every
+frame, the pointer is read from the knuckles, a One Euro filter and a short dead zone
+steady it, and the pointer follows. A pinch clicks (move while pinched to drag), a thumb to
+the middle finger right-clicks, two fingers up scrolls, a fist holds the cursor. The
+microphone array can also listen for a fingertip tapping the glass (off by default). No
+Dock icon, no window: one status item, one popover.
 
 Swift Package, AppKit + SwiftUI, Apple Silicon, macOS 15+. No dependencies.
 
@@ -37,8 +38,10 @@ fills in when a hand is tracked.
 
 | Change | Proof |
 |---|---|
-| Anything in the tracker or engine | Build, install, launch, turn it on, move your hand. The preview shows a dot on your index tip; the pointer must follow it with no visible stutter. |
-| Pinch | Pinch and hold over a Finder icon; it must drag. Release; it must drop. |
+| Anything in the tracker or engine | Build, install, launch, turn it on, move your hand. The preview draws the whole hand with a ring on the knuckles; the pointer must follow the ring with no visible shake, and must not move when you wiggle your fingers. |
+| Steadiness | Hold the pointer over a small target (a window's close button) and pinch. The click must land on it. Read the newest csv: `pose` rows carry the gap between hand and cursor in px in column d; while aiming it should sit under 10. |
+| Pinch | Pinch over a Finder icon and move while pinched; it must drag once your hand has moved a little. Pinch and release without moving; it must click, not drag. |
+| Right-click, scroll, fist | Thumb to middle finger with the index out: a context menu must open. Two fingers up over a long page, move the hand: the page must scroll with the hand. Make a fist and move the hand: the cursor must stay put. The panel's readout shows the five fingers as digits and the mode. |
 | Tap-to-click | Tap the glass once with a hand in view; the counter in the panel increments and a click lands. Knock the desk: nothing should happen. |
 | Calibration | Calibrate, then point at each screen corner: the pointer must reach every edge without the hand leaving the frame. |
 | Thresholds | Run the 60-second protocol in PLAN.md, then read `~/Library/Logs/Reach/signals <date>.csv`. Pinched frames must sit well under 0.28 and open frames well over 0.40; screen taps must show onset above the sensitivity's ratio and desk knocks and keystrokes must be dropped (tap rows with d=0). |
@@ -67,8 +70,20 @@ fills in when a hand is tracked.
   confusing failure, so the panel names it loudly and the engine checks before posting.
 - **Vision coordinates have their origin at the bottom-left.** Screen coordinates for
   CGEvent have theirs at the top-left. The flip lives in `PointerEngine` and nowhere else.
+- **The pointer is read at the knuckles, never the fingertip.** `HandSample.anchor` is
+  the middle of the index and middle knuckles. The index tip is the one joint that moves
+  when you pinch, so a tip-anchored cursor ran off its target at the moment of every click
+  (Ivan, 2026-11-05, "it's following my fingers too accurately"). Calibration measures
+  the same anchor. The stillness gate still watches the tip, on purpose: a pinch moves
+  the tip and so wakes a parked hand, while the phantom hands it guards against never move.
+- **Three steadiers, keep all three.** The cursor trails the hand on a 5 px string
+  (jitter inside it never posts), it is pinned from the first frame the thumb starts
+  closing until the pinch lands or 0.7 s pass, and a pinch stays a click until the hand
+  has moved 14 px from the press point. Whenever the cursor is held while the hand keeps
+  moving, the gap is pinned as an offset that fades over about half a second, so letting
+  go never jumps. Remove any of them and the click-time drift comes back.
 - **Mirror once.** The camera faces you, so raw x is reversed. The engine mirrors the
-  fingertip before calibration and mapping; the preview mirrors the image and the
+  anchor before calibration and mapping; the preview mirrors the image and the
   overlay; the stored region is in mirrored coordinates. Mirror in a second place and
   calibration will invert.
 - **Two gates, keep both.** The pointer follows only a raised hand (index tip above wrist in frame), and no pinch or tap counts within 0.3 s of a keystroke. Without them, typing clicks.
@@ -81,9 +96,9 @@ fills in when a hand is tracked.
 
 ## Where things are
 
-- `Sources/Reach/HandTracker.swift` — camera session and Vision request, background queue.
+- `Sources/Reach/HandTracker.swift` — camera session and Vision request, background queue; `HandSample` holds all 21 joints and reads finger extension, pinch ratios, and the knuckle anchor off them.
 - `Sources/Reach/TapListener.swift` — microphone onset detector.
-- `Sources/Reach/PointerEngine.swift` — mapping, smoothing, pinch state machine, calibration, CGEvents.
+- `Sources/Reach/PointerEngine.swift` — mapping, smoothing and steadying, pinch and gesture state machines, calibration, CGEvents.
 - `Sources/Reach/PanelView.swift` — the popover.
 - `Sources/Reach/AppDelegate.swift` — status item, popover, launch at login.
 - `Sources/make-icon/main.swift` — draws the icon; `make-app.sh` assembles the bundle.

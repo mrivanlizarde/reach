@@ -2,13 +2,16 @@ import AppKit
 import CoreGraphics
 import Combine
 
-/// Turns hand samples into pointer motion and clicks. Owns the two sensors.
+/// Turns hand samples into pointer motion, clicks, and scrolls. Owns the two sensors.
 @MainActor
 final class PointerEngine: ObservableObject, HandTrackerDelegate {
     enum CalibrationStep { case idle, topLeft, bottomRight }
+    /// What the hand is doing right now, for the panel and the log.
+    enum Mode: String { case point, aim, scroll, hold }
 
     @Published var handVisible = false
     @Published var pinching = false
+    @Published var rightPinching = false
     @Published var lastHand: HandSample?
     @Published var preview: CGImage?
     @Published var status: String = "Off"
@@ -18,6 +21,8 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     @Published var pinchRatio: Double = 0
     @Published var lastTapOnset: Float = 0
     @Published var handRaised = false
+    @Published var fingers = "00000"
+    @Published var mode: Mode = .point
     /// A hand that has not moved for two seconds is parked: it stops driving the pointer
     /// until it moves again. Two runs on 2026-11-05 showed the pose model holding a
     /// motionless "hand" at 30 fps for minutes; with the grant on, that pins the pointer.
@@ -32,9 +37,50 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
     private var fy = OneEuroFilter(minCutoff: 1.2, beta: 0.01)
     private var pinchFrames = 0
     private var releaseFrames = 0
+    private var rightFrames = 0
+    private var rightReleaseFrames = 0
     private var mouseIsDown = false
+    private var rightIsDown = false
+    /// Where the pointer is on screen: the last point posted.
     private var lastPoint = CGPoint.zero
+    /// Where the hand says the pointer should be, before the pinned offset.
+    private var lastTarget = CGPoint.zero
     private var lastSeen: Double = 0
+    private var lastFrameTime: Double = 0
+
+    // MARK: Steadiness
+    //
+    // Three things keep the cursor from shaking (Ivan, 2026-11-05: "it's following my
+    // fingers too accurately so the cursor moves off my intended target").
+    //
+    // 1. The cursor trails the hand on a short string: it only moves once the hand's point
+    //    is more than `lazyRadius` away, and then only by the excess. Jitter inside the
+    //    radius never reaches the screen.
+    // 2. The moment the thumb starts closing, the cursor is pinned where it was aimed, for
+    //    up to `aimHold` seconds. The hand rotates as it pinches; the click still lands.
+    // 3. A pinch is a click until the hand has moved `dragSlop` pixels from the press
+    //    point; only then does it become a drag. iOS treats touches the same way.
+    //
+    // Every time the cursor is held still while the hand keeps moving, the gap between
+    // them is pinned as an offset that then fades out, so letting go never makes the
+    // cursor jump to where the hand already is.
+    private let lazyRadius: CGFloat = 5
+    private let aimHold: Double = 0.7
+    private let dragSlop: CGFloat = 14
+    private var aimSince: Double?
+    private var pressPoint: CGPoint?
+    private var dragging = false
+    private var pin = CGVector.zero
+
+    // MARK: Gestures
+    private var twoFrames = 0
+    private var notTwoFrames = 0
+    private var fistFrames = 0
+    private var scrolling = false
+    private var holding = false
+    private var lastScrollTarget: CGPoint?
+    private let scrollGain = 1.5
+
     /// When a raised hand was last in frame. The camera does not see the hand on its way to
     /// the glass at all: in Ivan's fourth run (2026-11-05 14:30) every glass tap arrived 3 to
     /// 20 seconds after the last raised sighting. So the rule is "point, then reach and
@@ -95,8 +141,8 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
 
     /// 0 = raw and twitchy, 1 = heavy and calm. Both filter knobs move together.
     private func applySmoothing(_ v: Double) {
-        let cutoff = 4.0 - 3.4 * v          // 4 Hz down to 0.6 Hz
-        let beta = 0.05 - 0.045 * v
+        let cutoff = 3.0 - 2.5 * v          // 3 Hz down to 0.5 Hz
+        let beta = 0.03 - 0.027 * v
         fx.minCutoff = cutoff; fx.beta = beta
         fy.minCutoff = cutoff; fy.beta = beta
     }
@@ -117,16 +163,15 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         }
         tracker.start(cameraID: settings.cameraID)
         if settings.tapSoundToClick { startTapsIfAllowed() }
-        Diagnostics.shared.log("note", "start camera=\(settings.cameraID) tapSens=\(settings.tapSensitivity) smoothing=\(settings.smoothing) accessibility=\(Permissions.accessibility)")
+        Diagnostics.shared.log("note", "start camera=\(settings.cameraID) tapSens=\(settings.tapSensitivity) smoothing=\(settings.smoothing) scroll=\(settings.scrollGesture) rightPinch=\(settings.rightClickPinch) accessibility=\(Permissions.accessibility)")
         status = "Looking for a hand"
     }
 
     func stop() {
         tracker.stop()
         taps.stop()
-        releaseMouse()
+        releaseAll()
         handVisible = false
-        pinching = false
         preview = nil
         status = "Off"
     }
@@ -135,7 +180,8 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
 
     /// Two-point calibration: point at the top-left corner of the screen, hold, then the
     /// bottom-right. The region between becomes the full screen, so the hand never has to
-    /// travel the whole camera frame to reach an edge.
+    /// travel the whole camera frame to reach an edge. Measured at the knuckles, like the
+    /// pointer itself.
     func beginCalibration() {
         calibSamples = []
         calibTL = nil
@@ -191,7 +237,8 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
                 asleep = false; sleepAnchor = nil; recentTips = []
                 lastHand = nil
                 Diagnostics.shared.log("note", "hand lost")
-                releaseMouse()
+                releaseAll()
+                leaveGestures()
                 if calibration == .idle { status = "Looking for a hand" }
             }
             return
@@ -203,80 +250,194 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         if !handVisible {
             handVisible = true
             fx.reset(); fy.reset()
+            pin = .zero
             if calibration == .idle { status = "Tracking" }
         }
         lastHand = hand
         handRaised = hand.raised
         if hand.raised { lastRaisedSeen = lastSeen }
         pinchRatio = Double(hand.pinchRatio)
+        fingers = hand.extendedMask
         Diagnostics.shared.log("hand", String(format: "%.3f", hand.pinchRatio), String(format: "%.2f", hand.confidence),
-                               hand.raised ? 1 : 0, mouseIsDown ? 1 : 0)
+                               hand.raised ? 1 : 0, mouseIsDown ? 1 : rightIsDown ? 2 : 0)
 
         // A hand on the keyboard is not pointing. Let go of anything held and wait.
         if !hand.raised && calibration == .idle {
-            releaseMouse()
+            releaseAll()
+            leaveGestures()
             return
         }
 
         // Mirror so moving your hand right moves the pointer right (the camera faces you).
-        var p = hand.indexTip
-        if settings.mirror { p.x = 1 - p.x }
+        var p = hand.anchor, tip = hand.indexTip
+        if settings.mirror { p.x = 1 - p.x; tip.x = 1 - tip.x }
 
         if calibration != .idle {
             feedCalibration(p)
             return
         }
 
-        // Stillness gate. Spread of the last two seconds of fingertip positions under 1.5%
-        // of the frame means parked; waking needs a move of 3% from where it fell asleep.
-        recentTips.append((hand.time, p))
+        // Stillness gate, measured at the fingertip. Spread of the last two seconds under
+        // 1.5% of the frame means parked; waking needs a move of 3% from where it fell
+        // asleep. The tip, not the knuckles: a pinch moves the tip, so a pinch always wakes
+        // a parked hand, while the phantom hands this guards against never move at all.
+        recentTips.append((hand.time, tip))
         recentTips.removeAll { $0.t < hand.time - 2.0 }
         if asleep {
-            if let a = sleepAnchor, hypot(p.x - a.x, p.y - a.y) > 0.03 {
-                asleep = false; sleepAnchor = nil; recentTips = [(hand.time, p)]
+            if let a = sleepAnchor, hypot(tip.x - a.x, tip.y - a.y) > 0.03 {
+                asleep = false; sleepAnchor = nil; recentTips = [(hand.time, tip)]
                 fx.reset(); fy.reset()
                 Diagnostics.shared.log("note", "hand awake")
                 status = "Tracking"
+                // The filters restart at the hand's real position; keep the cursor where it is
+                // and let it ease over.
+                lastTarget = screenTarget(for: p, at: hand.time) ?? lastTarget
+                pinCursor()
             } else {
                 return
             }
         } else if recentTips.count > 20, recentTips.first!.t < hand.time - 1.9 {
             let xs = recentTips.map(\.p.x), ys = recentTips.map(\.p.y)
             if xs.max()! - xs.min()! < 0.015, ys.max()! - ys.min()! < 0.015 {
-                asleep = true; sleepAnchor = p
-                releaseMouse()
+                asleep = true; sleepAnchor = tip
+                releaseAll()
+                leaveGestures()
                 Diagnostics.shared.log("note", "hand asleep")
                 status = "Still. Move to wake"
                 return
             }
         }
 
-        // Map the calibrated region onto the main screen. Vision y grows upward; screen y
-        // for CGEvent grows downward from the top-left of the main display.
-        let r = settings.region
-        let nx = ((p.x - r.minX) / r.width).clamped(0, 1)
-        let ny = ((p.y - r.minY) / r.height).clamped(0, 1)
-        guard let screen = NSScreen.main else { return }
-        let sx = fx.filter(Double(screen.frame.minX + nx * screen.frame.width), at: hand.time)
-        let sy = fy.filter(Double(screen.frame.minY + (1 - ny) * screen.frame.height), at: hand.time)
-        let point = CGPoint(x: sx, y: sy)
-        lastPoint = point
-        if Permissions.accessibility {
-            post(mouseIsDown ? .leftMouseDragged : .mouseMoved, at: point)
+        guard let target = screenTarget(for: p, at: hand.time) else { return }
+        let dt = lastFrameTime > 0 ? min(hand.time - lastFrameTime, 0.2) : 1.0 / 30
+        lastFrameTime = hand.time
+        lastTarget = target
+
+        let ratio = hand.pinchRatio
+        let mratio = hand.middlePinchRatio
+        let rightPose = settings.rightClickPinch && hand.extended(.index) && ratio > 0.45
+        // "Closing": a thumb on its way to a fingertip. The aim pin starts here, before the
+        // pinch itself is certain.
+        let closing = ratio < 0.58 || (rightPose && mratio < 0.58)
+        let anyDown = mouseIsDown || rightIsDown
+
+        // Scroll pose, with a few frames of evidence either way.
+        if settings.scrollGesture, hand.isTwoFinger, !closing, !anyDown { twoFrames += 1; notTwoFrames = 0 }
+        else { notTwoFrames += 1; twoFrames = 0 }
+        if !scrolling, twoFrames >= 3 {
+            scrolling = true; lastScrollTarget = target
+            Diagnostics.shared.log("note", "scroll on")
+        } else if scrolling, notTwoFrames >= 3 {
+            scrolling = false; lastScrollTarget = nil
+            pinCursor()
+            Diagnostics.shared.log("note", "scroll off")
         }
+
+        // Fist: lift the mouse. Not while a thumb is closing on a finger, which a loose
+        // pinch can look like.
+        if hand.isFist, !closing, !anyDown { fistFrames += 1 } else { fistFrames = 0 }
+        let fist = fistFrames >= 3
+        if fist != holding {
+            holding = fist
+            if !fist { pinCursor() }
+            Diagnostics.shared.log("note", holding ? "hold on" : "hold off")
+        }
+
+        // Aim pin: cursor stays put from the first closing frame until the pinch lands or
+        // `aimHold` runs out. A hand that just hovers half-closed is released to move.
+        if closing, !anyDown {
+            if aimSince == nil { aimSince = hand.time }
+        } else if !closing, aimSince != nil {
+            aimSince = nil
+            if !anyDown { pinCursor() }
+        }
+        let aiming = !anyDown && aimSince.map { hand.time - $0 < aimHold } == true
+        if !aiming, aimSince != nil, !closing { aimSince = nil }
+
+        // Decide the mode and move, scroll, or hold.
+        if scrolling {
+            mode = .scroll
+            if let prev = lastScrollTarget {
+                let dy = Double(target.y - prev.y) * scrollGain
+                let dx = Double(target.x - prev.x) * scrollGain
+                if abs(dy) >= 1 || abs(dx) >= 1 { postScroll(dy: dy, dx: dx) }
+            }
+            lastScrollTarget = target
+        } else if holding {
+            mode = .hold
+        } else if aiming || (anyDown && !dragging) {
+            mode = .aim
+            if anyDown, !dragging, let pp = pressPoint {
+                let goal = CGPoint(x: target.x + pin.dx, y: target.y + pin.dy)
+                if hypot(goal.x - pp.x, goal.y - pp.y) > dragSlop {
+                    dragging = true
+                    Diagnostics.shared.log("note", "drag")
+                }
+            }
+        } else {
+            mode = .point
+            // The pinned offset fades once nothing is holding the cursor.
+            if !anyDown {
+                let k = exp(-dt / 0.4)
+                pin.dx *= k; pin.dy *= k
+                if abs(pin.dx) < 0.5, abs(pin.dy) < 0.5 { pin = .zero }
+            }
+            let goal = CGPoint(x: target.x + pin.dx, y: target.y + pin.dy)
+            let d = hypot(goal.x - lastPoint.x, goal.y - lastPoint.y)
+            if d > lazyRadius {
+                let f = (d - lazyRadius) / d
+                let np = CGPoint(x: lastPoint.x + (goal.x - lastPoint.x) * f, y: lastPoint.y + (goal.y - lastPoint.y) * f)
+                move(to: np)
+            }
+        }
+        Diagnostics.shared.log("pose", fingers, String(format: "%.3f", mratio), mode.rawValue,
+                               String(format: "%.1f", hypot(target.x + pin.dx - lastPoint.x, target.y + pin.dy - lastPoint.y)))
 
         // Pinch with hysteresis and a few frames of evidence, as Apple's WWDC20 sample does.
         // Not within a third of a second of a keystroke: that hand is typing, not clicking.
-        if settings.pinchToClick, secondsSinceKey() > 0.3 {
-            let ratio = hand.pinchRatio
+        // Thumb to index clicks. Thumb to middle, with the index still pointing, right-clicks.
+        if settings.pinchToClick, secondsSinceKey() > 0.3, !scrolling, !holding {
+            let rightWins = rightPose && mratio < 0.40
+            let leftWins = ratio < 0.40 && !rightWins
             // From Ivan's run of 2026-11-05: pinched frames sat at 0.11 to 0.33, and no open or
             // resting frame fell under 0.59. The old 0.28 sat on top of the pinch cluster.
-            if ratio < 0.40 { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.52 { releaseFrames += 1; pinchFrames = 0 }
-            if !mouseIsDown, pinchFrames >= 3 { pressMouse() }
+            if leftWins { pinchFrames += 1; releaseFrames = 0 } else if ratio > 0.52 { releaseFrames += 1; pinchFrames = 0 }
+            if !anyDown, pinchFrames >= 3 { pressMouse() }
             if mouseIsDown, releaseFrames >= 3 { releaseMouse() }
-        } else if mouseIsDown {
-            releaseMouse()
+
+            if rightWins { rightFrames += 1; rightReleaseFrames = 0 } else if mratio > 0.52 || !rightPose { rightReleaseFrames += 1; rightFrames = 0 }
+            if !anyDown, rightFrames >= 3 { pressRight() }
+            if rightIsDown, rightReleaseFrames >= 3 { releaseRight() }
+        } else if anyDown {
+            releaseAll()
         }
+    }
+
+    /// Map the calibrated region onto the main screen. Vision y grows upward; screen y
+    /// for CGEvent grows downward from the top-left of the main display.
+    private func screenTarget(for p: CGPoint, at t: Double) -> CGPoint? {
+        let r = settings.region
+        let nx = ((p.x - r.minX) / r.width).clamped(0, 1)
+        let ny = ((p.y - r.minY) / r.height).clamped(0, 1)
+        guard let screen = NSScreen.main else { return nil }
+        let sx = fx.filter(Double(screen.frame.minX + nx * screen.frame.width), at: t)
+        let sy = fy.filter(Double(screen.frame.minY + (1 - ny) * screen.frame.height), at: t)
+        return CGPoint(x: sx, y: sy)
+    }
+
+    /// Remember the gap between where the cursor is and where the hand says it should be,
+    /// so releasing a hold eases rather than jumps.
+    private func pinCursor() {
+        pin = CGVector(dx: lastPoint.x - lastTarget.x, dy: lastPoint.y - lastTarget.y)
+    }
+
+    private func leaveGestures() {
+        if scrolling { Diagnostics.shared.log("note", "scroll off") }
+        if holding { Diagnostics.shared.log("note", "hold off") }
+        scrolling = false; holding = false; lastScrollTarget = nil
+        twoFrames = 0; notTwoFrames = 0; fistFrames = 0
+        aimSince = nil
+        if mode != .point { mode = .point }
     }
 
     func tracker(_ tracker: HandTracker, didCapture image: CGImage) {
@@ -304,7 +465,7 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
             return
         }
         tapCount += 1
-        if mouseIsDown { return }
+        if mouseIsDown || rightIsDown { return }
         post(.leftMouseDown, at: lastPoint)
         post(.leftMouseUp, at: lastPoint)
     }
@@ -315,10 +476,20 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
     }
 
+    private func move(to p: CGPoint) {
+        lastPoint = p
+        guard Permissions.accessibility else { return }
+        post(mouseIsDown ? .leftMouseDragged : rightIsDown ? .rightMouseDragged : .mouseMoved, at: p)
+    }
+
     private func pressMouse() {
         guard Permissions.accessibility else { return }
         mouseIsDown = true
         pinching = true
+        pressPoint = lastPoint
+        dragging = false
+        aimSince = nil
+        pinCursor()
         post(.leftMouseDown, at: lastPoint)
     }
 
@@ -327,10 +498,52 @@ final class PointerEngine: ObservableObject, HandTrackerDelegate {
         guard mouseIsDown else { return }
         mouseIsDown = false
         post(.leftMouseUp, at: lastPoint)
+        endPress()
     }
 
-    private func post(_ type: CGEventType, at p: CGPoint) {
-        guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left) else { return }
+    private func pressRight() {
+        guard Permissions.accessibility else { return }
+        rightIsDown = true
+        rightPinching = true
+        pressPoint = lastPoint
+        dragging = false
+        aimSince = nil
+        pinCursor()
+        post(.rightMouseDown, at: lastPoint, button: .right)
+    }
+
+    private func releaseRight() {
+        rightPinching = false
+        guard rightIsDown else { return }
+        rightIsDown = false
+        post(.rightMouseUp, at: lastPoint, button: .right)
+        endPress()
+    }
+
+    /// After a click or drag ends, the hand is wherever the release left it. Pin so the
+    /// cursor eases over instead of jumping.
+    private func endPress() {
+        pressPoint = nil
+        dragging = false
+        pinCursor()
+    }
+
+    private func releaseAll() {
+        releaseMouse()
+        releaseRight()
+        pinchFrames = 0; releaseFrames = 0; rightFrames = 0; rightReleaseFrames = 0
+    }
+
+    private func post(_ type: CGEventType, at p: CGPoint, button: CGMouseButton = .left) {
+        guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: button) else { return }
+        e.post(tap: .cghidEventTap)
+    }
+
+    /// Natural scrolling: the content follows the hand. Hand up, page moves up.
+    private func postScroll(dy: Double, dx: Double) {
+        guard Permissions.accessibility else { return }
+        guard let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                              wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0) else { return }
         e.post(tap: .cghidEventTap)
     }
 }

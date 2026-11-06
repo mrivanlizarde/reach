@@ -11,6 +11,8 @@ final class Settings: ObservableObject {
     @Published var cameraID: String { didSet { d.set(cameraID, forKey: "cameraID") } }
     @Published var pinchToClick: Bool { didSet { d.set(pinchToClick, forKey: "pinchToClick") } }
     @Published var tapSoundToClick: Bool { didSet { d.set(tapSoundToClick, forKey: "tapSoundToClick") } }
+    @Published var scrollGesture: Bool { didSet { d.set(scrollGesture, forKey: "scrollGesture") } }
+    @Published var rightClickPinch: Bool { didSet { d.set(rightClickPinch, forKey: "rightClickPinch") } }
     @Published var smoothing: Double { didSet { d.set(smoothing, forKey: "smoothing") } }
     @Published var tapSensitivity: Double { didSet { d.set(tapSensitivity, forKey: "tapSensitivity") } }
     @Published var showPreview: Bool { didSet { d.set(showPreview, forKey: "showPreview") } }
@@ -25,6 +27,8 @@ final class Settings: ObservableObject {
             "cameraID": "",
             "pinchToClick": true,
             "tapSoundToClick": false,   // opt-in since 2026-11-05: the camera cannot see the hand at the glass
+            "scrollGesture": true,
+            "rightClickPinch": true,
             "smoothing": 0.5,
             "tapSensitivity": 0.5,
             "showPreview": true,
@@ -35,6 +39,8 @@ final class Settings: ObservableObject {
         cameraID = d.string(forKey: "cameraID") ?? ""
         pinchToClick = d.bool(forKey: "pinchToClick")
         tapSoundToClick = d.bool(forKey: "tapSoundToClick")
+        scrollGesture = d.bool(forKey: "scrollGesture")
+        rightClickPinch = d.bool(forKey: "rightClickPinch")
         smoothing = d.double(forKey: "smoothing")
         tapSensitivity = d.double(forKey: "tapSensitivity")
         showPreview = d.bool(forKey: "showPreview")

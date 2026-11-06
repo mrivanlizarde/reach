@@ -88,9 +88,11 @@ struct PanelView: View {
             }
             if engine.handVisible {
                 // The numbers the thresholds see. Pinch fires below 0.40, releases above 0.52.
+                // Fingers read thumb, index, middle, ring, little; 1 is up.
                 HStack(spacing: 10) {
                     Text(String(format: "pinch %.2f", engine.pinchRatio))
-                    Text(engine.asleep ? "parked" : engine.handRaised ? "raised" : "resting")
+                    Text("fingers \(engine.fingers)")
+                    Text(engine.asleep ? "parked" : !engine.handRaised ? "resting" : engine.mode.rawValue)
                     if engine.lastTapOnset > 0 { Text(String(format: "tap %.0fx", engine.lastTapOnset)) }
                 }
                 .font(.caption2).monospacedDigit().foregroundStyle(.tertiary)
@@ -114,30 +116,69 @@ struct PanelView: View {
             .position(x: rect.midX, y: rect.midY)
     }
 
+    /// The whole hand: five chains from the wrist, bright where a finger is up, dim where
+    /// it is curled. The index tip lights up on a click, the middle tip on a right click.
     private func handOverlay(_ hand: HandSample, in size: CGSize) -> some View {
-        var tip = hand.indexTip, thumb = hand.thumbTip
-        if settings.mirror { tip.x = 1 - tip.x; thumb.x = 1 - thumb.x }
+        func at(_ j: Joint) -> CGPoint {
+            var p = hand[j]
+            if settings.mirror { p.x = 1 - p.x }
+            return CGPoint(x: p.x * size.width, y: (1 - p.y) * size.height)
+        }
         return ZStack {
-            Path { p in
-                p.move(to: CGPoint(x: tip.x * size.width, y: (1 - tip.y) * size.height))
-                p.addLine(to: CGPoint(x: thumb.x * size.width, y: (1 - thumb.y) * size.height))
-            }.stroke(Color.white.opacity(0.7), lineWidth: 1.5)
+            ForEach(Finger.allCases, id: \.rawValue) { f in
+                let up = hand.extended(f)
+                Path { p in
+                    var prev = at(.wrist)
+                    p.move(to: prev)
+                    for j in f.chain where hand.confident(j) {
+                        let q = at(j)
+                        p.addLine(to: q)
+                        prev = q
+                    }
+                }
+                .stroke(Color.white.opacity(up ? 0.85 : 0.35), lineWidth: 1.5)
+                ForEach(f.chain.filter { hand.confident($0) }, id: \.rawValue) { j in
+                    Circle().fill(Color.white.opacity(up ? 0.9 : 0.4))
+                        .frame(width: 4, height: 4)
+                        .position(at(j))
+                }
+            }
             Circle().fill(engine.pinching ? Color.accentColor : Color.white)
-                .frame(width: 12, height: 12)
-                .position(x: tip.x * size.width, y: (1 - tip.y) * size.height)
+                .frame(width: 10, height: 10)
+                .position(at(.indexTip))
+            Circle().fill(engine.rightPinching ? Color.accentColor : Color.white.opacity(0.8))
+                .frame(width: 7, height: 7)
+                .position(at(.middleTip))
             Circle().fill(Color.white.opacity(0.8))
-                .frame(width: 8, height: 8)
-                .position(x: thumb.x * size.width, y: (1 - thumb.y) * size.height)
+                .frame(width: 7, height: 7)
+                .position(at(.thumbTip))
+            // The point the cursor is read from.
+            Circle().stroke(Color.accentColor, lineWidth: 1.5)
+                .frame(width: 9, height: 9)
+                .position(CGPoint(x: (at(.indexMCP).x + at(.middleMCP).x) / 2, y: (at(.indexMCP).y + at(.middleMCP).y) / 2))
         }
     }
 
     private var clicks: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Click").font(.caption).foregroundStyle(.secondary).textCase(.uppercase)
+            Text("Gestures").font(.caption).foregroundStyle(.secondary).textCase(.uppercase)
             Toggle(isOn: $settings.pinchToClick) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Pinch")
-                    Text("Thumb to index. Hold to drag.").font(.caption).foregroundStyle(.secondary)
+                    Text("Pinch to click")
+                    Text("Thumb to index. Hold and move to drag.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Toggle(isOn: $settings.rightClickPinch) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Middle pinch to right-click")
+                    Text("Thumb to middle finger, index still pointing.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .disabled(!settings.pinchToClick)
+            Toggle(isOn: $settings.scrollGesture) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Two fingers to scroll")
+                    Text("Index and middle up, others down. A fist holds the cursor still.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Toggle(isOn: $settings.tapSoundToClick) {

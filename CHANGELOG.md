@@ -1,5 +1,32 @@
 # CHANGELOG — Reach
 
+## 2026-11-05, 16:15 — Steady cursor, five fingers
+
+Ivan's first hour of real use: "the cursor is too shaky; when I start to click it follows
+my fingers too accurately and moves off the target." The cause was the anchor. The pointer
+was read from the index fingertip, and the fingertip is the one joint that moves when you
+pinch, so every click pushed the cursor off its own target. He had pushed the smoothing
+slider to the maximum trying to fix it, which only made the pointer slow.
+
+The pointer is now read from the knuckles (midpoint of the index and middle MCPs), which
+stay put through a pinch. Three steadiers on top: the cursor trails the hand on a 5 px
+string so jitter inside it never posts, it is pinned from the first frame the thumb starts
+closing until the pinch lands (0.7 s at most), and a pinch stays a click until the hand
+has moved 14 px from the press point, as iOS treats a touch. Every hold pins the gap as an
+offset that fades out, so nothing jumps when the hold ends. Smoothing reset to the middle.
+
+He also asked for all five fingers. `HandSample` now carries all 21 joints, with a
+per-finger extension test (tip clearly farther from the wrist than the middle joint; the
+thumb measured from the little finger's knuckle). On that: thumb-to-middle pinch with the
+index still out right-clicks, index-and-middle-up scrolls (natural direction, the page
+follows the hand), a fist holds the cursor. Both gestures have panel toggles, on by
+default. The preview draws the whole hand, bright where a finger is up, with a ring on the
+knuckle anchor. The log gains `pose` rows: finger digits, middle-pinch ratio, mode, and
+the gap in px between where the hand points and where the cursor is.
+
+Not yet verified by a hand: the extension thresholds and the scroll direction were set by
+reasoning. Calibration measures the knuckles now, so one Calibrate is worth doing.
+
 ## 2026-11-05, 14:40 — Pinch is the click
 
 Ivan's call after the fourth run: pinch is enough. Tap-to-click is now opt-in and off by

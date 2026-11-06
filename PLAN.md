@@ -3,8 +3,11 @@
 ## Built (0.1, 2026-11-05)
 
 - Menu bar app, no Dock icon, one popover.
-- Vision hand pose at 30 fps on the built-in or Desk View camera, index tip drives the pointer.
-- One Euro smoothing with a single user-facing slider.
+- Vision hand pose at 30 fps on the built-in or Desk View camera, all 21 joints kept; the
+  knuckles drive the pointer.
+- One Euro smoothing with a single user-facing slider, plus a 5 px dead zone, an aim pin
+  while the thumb closes, and a 14 px drag slop (added 2026-11-05 after the first day's use).
+- Finger extension per finger, two-finger scroll, middle-pinch right-click, fist hold.
 - Two-point calibration (top-left, bottom-right) with a stillness check.
 - Pinch to click and drag, hysteresis plus three frames of evidence.
 - Microphone onset detector for tap-on-glass clicks, gated on a visible hand.
@@ -35,11 +38,17 @@ Then: `open ~/Library/Logs/Reach` and hand the newest csv over. Thresholds are s
    glass reaches them in a different order than one on the right. Cross-correlating
    channels could give a coarse x position and confirm the camera's estimate. Needs a
    multichannel input format, which `AVAudioEngine` exposes on this hardware.
-4. **Right-click and scroll.** A two-finger pinch for secondary click; an open palm moving
-   vertically for scroll.
+4. **Done 2026-11-05: right-click and scroll.** Thumb-to-middle pinch for secondary click,
+   index-and-middle-up for scroll, fist to hold. Built from the extension test (tip farther
+   from the wrist than the middle joint), not yet tuned from a log: the `pose` rows carry
+   the finger digits and the hand-to-cursor gap, so the next run can tune them.
 5. **Multi-display.** The engine maps to `NSScreen.main` only.
 6. **Hover intent.** Ignore the pointer when the hand is resting (very low velocity for
-   several seconds) so it does not drift across the screen while you read.
+   several seconds) so it does not drift across the screen while you read. Partly covered
+   by the stillness gate and the fist hold.
+8. **Steadiness from data.** The first day's shake was fixed from reasoning, not a log;
+   the `pose` rows now record the gap in px. Read one run and set the dead zone and the
+   aim hold from it.
 
 ## Open questions
 

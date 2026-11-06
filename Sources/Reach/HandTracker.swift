@@ -3,28 +3,103 @@ import Vision
 import CoreGraphics
 import CoreImage
 
-/// One frame's worth of hand knowledge, in Vision's normalized coordinates (origin bottom-left).
-struct HandSample: Sendable {
-    let indexTip: CGPoint
-    let thumbTip: CGPoint
-    let wrist: CGPoint
-    let middleMCP: CGPoint
-    let confidence: Float
-    let time: Double
-    let indexMCP: CGPoint
-    let pinkyMCP: CGPoint
-    /// Thumb tip to index tip distance, divided by hand size, so a pinch means the same
-    /// thing near and far from the camera. Hand size is the longest of three palm edges:
-    /// a palm turned edge-on to the camera foreshortens any single one of them.
-    var pinchRatio: CGFloat {
-        let palm = max(hypot(wrist.x - middleMCP.x, wrist.y - middleMCP.y),
-                       hypot(wrist.x - indexMCP.x, wrist.y - indexMCP.y),
-                       hypot(indexMCP.x - pinkyMCP.x, indexMCP.y - pinkyMCP.y), 0.02)
-        return hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y) / palm
+/// Vision's 21 hand joints, wrist first, then one chain per finger from knuckle to tip.
+enum Joint: Int, CaseIterable, Sendable {
+    case wrist
+    case thumbCMC, thumbMP, thumbIP, thumbTip
+    case indexMCP, indexPIP, indexDIP, indexTip
+    case middleMCP, middlePIP, middleDIP, middleTip
+    case ringMCP, ringPIP, ringDIP, ringTip
+    case littleMCP, littlePIP, littleDIP, littleTip
+
+    static let visionNames: [VNHumanHandPoseObservation.JointName] = [
+        .wrist,
+        .thumbCMC, .thumbMP, .thumbIP, .thumbTip,
+        .indexMCP, .indexPIP, .indexDIP, .indexTip,
+        .middleMCP, .middlePIP, .middleDIP, .middleTip,
+        .ringMCP, .ringPIP, .ringDIP, .ringTip,
+        .littleMCP, .littlePIP, .littleDIP, .littleTip,
+    ]
+}
+
+enum Finger: Int, CaseIterable, Sendable {
+    case thumb, index, middle, ring, little
+    /// Knuckle to tip. The thumb's chain starts at the CMC joint near the wrist.
+    var chain: [Joint] {
+        switch self {
+        case .thumb: return [.thumbCMC, .thumbMP, .thumbIP, .thumbTip]
+        case .index: return [.indexMCP, .indexPIP, .indexDIP, .indexTip]
+        case .middle: return [.middleMCP, .middlePIP, .middleDIP, .middleTip]
+        case .ring: return [.ringMCP, .ringPIP, .ringDIP, .ringTip]
+        case .little: return [.littleMCP, .littlePIP, .littleDIP, .littleTip]
+        }
     }
+    var tip: Joint { chain[3] }
+    var pip: Joint { chain[1] }
+}
+
+/// One frame's worth of hand knowledge: all 21 joints in Vision's normalized coordinates
+/// (origin bottom-left), with what the pointer and the gestures read off them.
+struct HandSample: Sendable {
+    let points: [CGPoint]
+    let confidences: [Float]
+    let time: Double
+
+    subscript(_ j: Joint) -> CGPoint { points[j.rawValue] }
+    func confident(_ j: Joint) -> Bool { confidences[j.rawValue] > 0.3 }
+
+    var wrist: CGPoint { self[.wrist] }
+    var thumbTip: CGPoint { self[.thumbTip] }
+    var indexTip: CGPoint { self[.indexTip] }
+    var middleTip: CGPoint { self[.middleTip] }
+    var indexMCP: CGPoint { self[.indexMCP] }
+    var middleMCP: CGPoint { self[.middleMCP] }
+    var pinkyMCP: CGPoint { self[.littleMCP] }
+    var confidence: Float { min(confidences[Joint.indexTip.rawValue], confidences[Joint.thumbTip.rawValue]) }
+
+    /// Hand size: the longest of three palm edges. A palm turned edge-on to the camera
+    /// foreshortens any single one of them.
+    var palm: CGFloat {
+        max(dist(wrist, middleMCP), dist(wrist, indexMCP), dist(indexMCP, pinkyMCP), 0.02)
+    }
+    /// Thumb tip to index tip, divided by hand size, so a pinch means the same thing near
+    /// and far from the camera.
+    var pinchRatio: CGFloat { dist(indexTip, thumbTip) / palm }
+    /// Thumb tip to middle tip, same scale. The right-click pinch.
+    var middlePinchRatio: CGFloat { dist(middleTip, thumbTip) / palm }
+
+    /// Where the pointer is read from: the middle of the knuckle row, not the fingertip.
+    /// The fingertip is the one joint that moves when you pinch, so a tip-anchored cursor
+    /// ran off its target at the moment of every click (Ivan, 2026-11-05). The knuckles
+    /// stay put through a pinch, a scroll, and a fist.
+    var anchor: CGPoint {
+        CGPoint(x: (indexMCP.x + middleMCP.x) / 2, y: (indexMCP.y + middleMCP.y) / 2)
+    }
+
     /// Fingertip above the wrist in the frame: a hand held up to point, not one resting on
     /// the keyboard. Typing hands read as pinches to the pose model; this is the gate.
     var raised: Bool { indexTip.y > wrist.y + 0.02 }
+
+    /// A finger is extended when its tip is clearly farther from the wrist than its middle
+    /// joint is. A curled finger folds its tip back toward the palm. The thumb is measured
+    /// from the little finger's knuckle instead: tucked across the palm it ends up near
+    /// there, held out it ends up far away.
+    func extended(_ f: Finger) -> Bool {
+        let tip = f.tip, pip = f.pip
+        guard confident(tip), confident(pip) else { return f == .index }
+        if f == .thumb {
+            return dist(self[.thumbTip], pinkyMCP) > dist(self[.thumbIP], pinkyMCP) * 1.08
+        }
+        return dist(self[tip], wrist) > dist(self[pip], wrist) * 1.12
+    }
+    /// Thumb, index, middle, ring, little as five digits, 1 for extended. "01100" is two up.
+    var extendedMask: String { Finger.allCases.map { extended($0) ? "1" : "0" }.joined() }
+    /// Index and middle up, ring and little down: the scroll pose.
+    var isTwoFinger: Bool { extended(.index) && extended(.middle) && !extended(.ring) && !extended(.little) }
+    /// All four fingers down: the hold pose, like lifting a mouse off the desk.
+    var isFist: Bool { !extended(.index) && !extended(.middle) && !extended(.ring) && !extended(.little) }
+
+    private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
 }
 
 @MainActor
@@ -115,13 +190,17 @@ final class HandTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
         do {
             try handler.perform([request])
             if let obs = request.results?.first {
-                let tips = try obs.recognizedPoints(.all)
-                if let idx = tips[.indexTip], let th = tips[.thumbTip], let w = tips[.wrist], let m = tips[.middleMCP],
-                   let im = tips[.indexMCP], let pm = tips[.littleMCP],
-                   idx.confidence > 0.3, th.confidence > 0.3 {
-                    sample = HandSample(indexTip: idx.location, thumbTip: th.location, wrist: w.location,
-                                        middleMCP: m.location, confidence: min(idx.confidence, th.confidence), time: t,
-                                        indexMCP: im.location, pinkyMCP: pm.location)
+                let all = try obs.recognizedPoints(.all)
+                var pts = [CGPoint](repeating: .zero, count: Joint.allCases.count)
+                var conf = [Float](repeating: 0, count: Joint.allCases.count)
+                for j in Joint.allCases {
+                    if let p = all[Joint.visionNames[j.rawValue]] { pts[j.rawValue] = p.location; conf[j.rawValue] = p.confidence }
+                }
+                // The pointer needs the knuckle row and the pinch needs the two tips. Without
+                // those four, the frame is noise.
+                let needed: [Joint] = [.indexTip, .thumbTip, .indexMCP, .middleMCP]
+                if needed.allSatisfy({ conf[$0.rawValue] > 0.3 }) {
+                    sample = HandSample(points: pts, confidences: conf, time: t)
                 }
             }
         } catch {

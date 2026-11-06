@@ -1,6 +1,6 @@
 # Reach
 
-Point at your Mac's screen and the pointer goes there. Pinch to click. Tap the glass to click.
+Point at your Mac's screen and the pointer goes there. Pinch to click, two fingers to scroll.
 
 Reach is a small menu bar app for Apple Silicon Macs. It uses the built-in camera and
 Apple's Vision framework to track your hand, and the microphone array to hear a fingertip
@@ -38,7 +38,9 @@ Requires macOS 15 or later and Xcode's command line tools.
 Desk View looks down at the desk, which is useful if you would rather gesture above the
 keyboard than in front of the screen.
 
-**Smoothing.** Left is quick and a little jittery; right is calm and a little slow.
+**Smoothing.** Left is quick and a little jittery; right is calm and a little slow. The
+middle is right for most hands: the cursor also ignores small shakes on its own, so the
+slider no longer has to do all the work.
 
 ## Why it is not a real touchscreen
 
